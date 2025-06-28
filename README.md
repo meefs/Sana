@@ -55,6 +55,7 @@
 
 ## 🔥🔥 News
 
+- (🔥 New) \[2025/6/25\] [SANA-Sprint](https://nvlabs.github.io/Sana/Sprint/) was accepted to ICCV'25 🏖️
 - (🔥 New) \[2025/6/4\] SANA-Sprint [ComfyUI Node](https://github.com/Efficient-Large-Model/ComfyUI_ExtraModels) is released [\[Example\]](asset/docs/ComfyUI/SANA-Sprint.json) | [\[PR\]](https://github.com/Efficient-Large-Model/ComfyUI_ExtraModels/pull/15).
 - (🔥 New) \[2025/5/8\] SANA-Sprint (One-step diffusion) diffusers training code is released [\[Guidance\]](https://github.com/huggingface/diffusers/blob/main/examples/research_projects/sana/README.md).
 - (🔥 New) \[2025/5/4\] **SANA-1.5 (Inference-time scaling) is accepted by ICML-2025.** 🎉🎉🎉
@@ -74,7 +75,6 @@
 <details>
   <summary>Click to show all updates</summary>
 
-- (🔥 New) \[2025/6/25\] [SANA-Sprint](https://nvlabs.github.io/Sana/Sprint/) was accepted to ICCV'25 🏖️
 - (🔥 New) \[2025/1/12\] DC-AE tiling makes Sana-4K inferences 4096x4096px images within 22GB GPU memory. With model offload and 8bit/4bit quantize. The 4K Sana run within **8GB** GPU VRAM. [\[Guidance\]](asset/docs/model_zoo.md#-3-2k--4k-models)
 - (🔥 New) \[2025/1/11\] Sana code-base license changed to Apache 2.0.
 - (🔥 New) \[2025/1/10\] Inference Sana with 8bit quantization.[\[Guidance\]](asset/docs/quantize/8bit_sana.md#quantization)
