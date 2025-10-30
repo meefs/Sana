@@ -31,8 +31,8 @@
 **ComfyUI**: [ComfyUI Guidance](asset/docs/ComfyUI/comfyui.md) <br>
 **Model Zoo:** [Model Card Collects All Models](asset/docs/model_zoo.md) <br>
 **Env Preparation:** [One-Click Env Install](#-1-dependencies-and-installation) <br>
-**Inference:** <br>      1) [diffusers:SanaPipeline](#1-how-to-use-sanapipeline-with-diffusers) <br>      2) [diffusers:SanaPAGPipeline](#2-how-to-use-sanapagpipeline-with-diffusers) <br>      3) [Ours:SanaPipeline](#3-how-to-use-sana-in-this-repo) <br>      4) [Inference with Docker](#4-run-sana-inference-with-docker) <br>      5) [Inference with TXT or JSON Files](#5-run-inference-with-txt-or-json-files) <br>
-**Training and Data:** <br>      1) [Image-Text Pairs](#1-train-with-image-text-pairs-in-directory) <br>      2) [Multi-Scale Webdataset](#2-train-with-multi-scale-webdataset) <br>      3) [TAR File Multi-Scale Webdataset](#3-train-with-tar-file) <br>      4) [FSDP Launch](#3-train-with-tar-file) <br>      5) [LoRA Training](asset/docs/sana_lora_dreambooth.md) <br>      6) [SANA-Sprint Diffusers Training](https://github.com/huggingface/diffusers/blob/main/examples/research_projects/sana/README.md) <br>
+**Inference:** <br>      1) [diffusers:SanaPipeline](#1-how-to-use-sanapipeline-with-diffusers) <br>      2) [diffusers:SanaPAGPipeline](#2-how-to-use-sanapagpipeline-with-diffusers) <br>      3) [Ours:SanaPipeline](#3-how-to-use-sana-in-this-repo) <br>      4) [Inference with Docker](#4-run-sana-inference-with-docker) <br>      5) [Inference with TXT or JSON Files](#5-run-inference-with-txt-or-json-files) <br>      6) [Inference SANA-Video](asset/docs/sana_video.md#-how-to-inference) <br>
+**Training and Data:** <br>      1) [Image-Text Pairs](#1-train-with-image-text-pairs-in-directory) <br>      2) [Multi-Scale Webdataset](#2-train-with-multi-scale-webdataset) <br>      3) [TAR File Multi-Scale Webdataset](#3-train-with-tar-file) <br>      4) [FSDP Launch](#3-train-with-tar-file) <br>      5) [LoRA Training](asset/docs/sana_lora_dreambooth.md) <br>      6) [SANA-Sprint Diffusers Training](https://github.com/huggingface/diffusers/blob/main/examples/research_projects/sana/README.md) <br>      7) [SANA-Video Training](asset/docs/sana_video.md#-how-to-train) <br>
 
 ### 🏃 Applications:
 
@@ -46,8 +46,9 @@
 
 ### 🚗 Advance:
 
-**SANA-Sprint: One-Step Diffusion**: [Arxiv](https://arxiv.org/pdf/2503.09641) | [Train&Inference Guidance](asset/docs/sana_sprint.md) | [Model Zoo](asset/docs/model_zoo.md#sana-sprint) | [HF Weights](https://huggingface.co/collections/Efficient-Large-Model/sana-sprint-67d6810d65235085b3b17c76) <br>
-**SANA-1.5: Efficient Model Scaling:** [Arxiv](https://arxiv.org/abs/2501.18427) | [Model Zoo](asset/docs/model_zoo.md#sana-15) | [HF Weights](https://huggingface.co/collections/Efficient-Large-Model/sana-15-67d6803867cb21c230b780e4) <br>
+**SANA-Sprint: One-Step Diffusion**: [Arxiv](https://arxiv.org/pdf/2503.09641) | [Train&Inference Guidance](asset/docs/sana_sprint.md) | [Model Zoo](asset/docs/model_zoo.md#sana-sprint) | [HF Weights](https://hf.co/collections/Efficient-Large-Model/sana-sprint) <br>
+**SANA-1.5: Efficient Model Scaling:** [Arxiv](https://arxiv.org/abs/2501.18427) | [Model Zoo](asset/docs/model_zoo.md#sana-15) | [HF Weights](https://hf.co/collections/Efficient-Large-Model/sana-15) <br>
+**SANA-Video: Efficient Video Gen**: [Arxiv](https://arxiv.org/pdf/2509.24695) | [Train&Inference Guidance](asset/docs/sana_video.md) | [Model Zoo](asset/docs/model_zoo.md#sana-video) | [HF Weights](https://hf.co/collections/Efficient-Large-Model/sana-video) <br>
 
 ### 🚀 Future:
 
@@ -55,6 +56,7 @@
 
 ## 🔥🔥 News
 
+- (🔥 New) \[2025/10/27\] 📺**SANA-Video** is released. [\[README\]](asset/docs/sana_video.md) | [\[Weights\]](asset/docs/model_zoo.md#sana-video)
 - (🔥 New) \[2025/10/13\] 📺**SANA-Video** is coming, 1). a 5s Linear DiT Video model, and 2). real-time minute-length video generation (with [LongLive](https://github.com/NVlabs/LongLive)). [\[paper\]](https://www.arxiv.org/pdf/2509.24695) | [\[Page\]](https://nvlabs.github.io/Sana/Video/)
 - (🔥 New) \[2025/8/20\] We release a new DC-AE-Lite for faster inference and smaller memory. [\[How to config\]](https://github.com/NVlabs/Sana/blob/main/configs/sana_sprint_config/1024ms/SanaSprint_1600M_1024px_allqknorm_bf16_scm_ladd_dc_ae_lite.yaml#L52) | [\[diffusers PR\]](https://github.com/huggingface/diffusers/pull/12169) | [Weight](https://huggingface.co/mit-han-lab/dc-ae-lite-f32c32-sana-1.1-diffusers)
 - (🔥 New) \[2025/6/25\] [SANA-Sprint](https://nvlabs.github.io/Sana/Sprint/) was accepted to ICCV'25 🏖️
@@ -65,6 +67,10 @@
 - (🔥 New) \[2025/3/22\] 🔥**SANA-1.5 is supported in ComfyUI!** 🎉: [ComfyUI Guidance](asset/docs/ComfyUI/comfyui.md) | [ComfyUI Work Flow SANA-1.5 4.8B](asset/docs/ComfyUI/SANA-1.5_FlowEuler.json)
 - (🔥 New) \[2025/3/22\] 🔥**SANA-Sprint code & weights are released!** 🎉 Include: [Training & Inference](asset/docs/sana_sprint.md) code and [Weights](asset/docs/model_zoo.md) / [HF](https://huggingface.co/collections/Efficient-Large-Model/sana-15-67d6803867cb21c230b780e4) are all released. [\[Guidance\]](asset/docs/sana_sprint.md)
 - (🔥 New) \[2025/3/21\] 🚀Sana + **Inference Scaling** is released. [\[Guidance\]](asset/docs/inference_scaling/inference_scaling.md)
+
+<details>
+  <summary>Click to show all updates</summary>
+
 - (🔥 New) \[2025/3/16\] 🔥**SANA-1.5 code & weights are released!** 🎉 Include: [DDP/FSDP](#3-train-with-tar-file) | [TAR file WebDataset](#3-train-with-tar-file) | [Multi-Scale](#3-train-with-tar-file) Training code and [Weights](asset/docs/model_zoo.md) | [HF](https://huggingface.co/collections/Efficient-Large-Model/sana-15-67d6803867cb21c230b780e4) are all released.
 - (🔥 New) \[2025/3/14\] 🏃**SANA-Sprint is coming out!** 🎉 A new one/few-step generator of Sana. 0.1s per 1024px image on H100, 0.3s on RTX 4090. Find out more details: [\[Page\]](https://nvlabs.github.io/Sana/Sprint/) | [\[Arxiv\]](https://arxiv.org/abs/2503.09641). Code is coming very soon along with `diffusers`
 - (🔥 New) \[2025/2/10\] 🚀Sana + ControlNet is released. [\[Guidance\]](asset/docs/sana_controlnet.md) | [\[Model\]](asset/docs/model_zoo.md) | [\[Demo\]](https://nv-sana.mit.edu/ctrlnet/)
@@ -73,10 +79,6 @@
 - (🔥 New) \[2025/1/24\] 4bit-Sana is released, powered by [SVDQuant and Nunchaku](https://github.com/mit-han-lab/nunchaku) inference engine. Now run your Sana within **8GB** GPU VRAM [\[Guidance\]](asset/docs/quantize/4bit_sana.md) [\[Demo\]](https://svdquant.mit.edu/) [\[Model\]](asset/docs/model_zoo.md)
 - (🔥 New) \[2025/1/24\] DCAE-1.1 is released, better reconstruction quality. [\[Model\]](https://huggingface.co/mit-han-lab/dc-ae-f32c32-sana-1.1) [\[diffusers\]](https://huggingface.co/mit-han-lab/dc-ae-f32c32-sana-1.1-diffusers)
 - (🔥 New) \[2025/1/23\] **Sana is accepted as Oral by ICLR-2025.** 🎉🎉🎉
-
-<details>
-  <summary>Click to show all updates</summary>
-
 - (🔥 New) \[2025/1/12\] DC-AE tiling makes Sana-4K inferences 4096x4096px images within 22GB GPU memory. With model offload and 8bit/4bit quantize. The 4K Sana run within **8GB** GPU VRAM. [\[Guidance\]](asset/docs/model_zoo.md#-3-2k--4k-models)
 - (🔥 New) \[2025/1/11\] Sana code-base license changed to Apache 2.0.
 - (🔥 New) \[2025/1/10\] Inference Sana with 8bit quantization.[\[Guidance\]](asset/docs/quantize/8bit_sana.md#quantization)
@@ -495,6 +497,8 @@ We will try our best to achieve
 - [Efficient-ViT](https://github.com/mit-han-lab/efficientvit)
 - [ComfyUI_ExtraModels](https://github.com/city96/ComfyUI_ExtraModels)
 - [SVDQuant and Nunchaku](https://github.com/mit-han-lab/nunchaku)
+- [Open-Sora](https://github.com/hpcaitech/Open-Sora)
+- [Wan](https://github.com/Wan-Video/Wan2.1)
 - [diffusers](https://github.com/huggingface/diffusers)
 
 Thanks [Paper2Video](https://showlab.github.io/Paper2Video/) for generating Jeason presenting SANA😊. Refer to [Paper2Video](https://showlab.github.io/Paper2Video/) for more details.
@@ -512,7 +516,6 @@ Thanks goes to these wonderful contributors:
 <a href="https://github.com/NVlabs/Sana/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=NVlabs/Sana" />
 </a>
-
 
 ## 🌟 Star History
 

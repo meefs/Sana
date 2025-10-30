@@ -14,13 +14,17 @@ classifiers = [
 ]
 dependencies = [
     "pre-commit",
-    "accelerate",
+    "huggingface-hub==0.36.0",
+    "accelerate==1.0.1",
     "beautifulsoup4",
     "bs4",
     "came-pytorch",
     "einops",
     "ftfy",
-    "diffusers@git+https://github.com/huggingface/diffusers",
+    "wheel",
+    "psutil",
+    "ninja",
+    "diffusers==0.35.0",
     "clip@git+https://github.com/openai/CLIP.git",
     "gradio",
     "image-reward",
@@ -37,20 +41,24 @@ dependencies = [
     "sentencepiece",
     "tensorboard",
     "tensorboardX",
-    "timm",
-    "torchaudio==2.4.0",
-    "torchvision==0.19",
-    "transformers==4.49.0",
-    "triton==3.0.0",
+    "timm==0.6.13",
+    "torchaudio==2.8.0",
+    "torchvision==0.23.0",
+    "transformers==4.57.0",
+    "triton==3.4.0",
     "wandb",
     "webdataset",
-    "xformers==0.0.27.post2",
+    "xformers==0.0.32.post2",
     "yapf",
     "spaces",
     "matplotlib",
     "termcolor",
     "pyrallis",
     "bitsandbytes",
+    "fire",
+    "moviepy",
+    "imageio[pyav,ffmpeg]",
+    "qwen-vl-utils",
 ]
 
 
@@ -63,7 +71,7 @@ sana-upload = "sana.cli.upload2hf:main"
 [project.urls]
 
 [tool.pip]
-extra-index-url = ["https://download.pytorch.org/whl/cu121"]
+extra-index-url = ["https://download.pytorch.org/whl/cu128"]
 
 [tool.black]
 line-length = 120
@@ -78,7 +86,7 @@ ensure_newline_before_comments = true
 line_length = 120
 
 [tool.setuptools.packages.find]
-exclude = ["assets*", "benchmark*", "docs", "dist*", "playground*", "scripts*", "tests*"]
+exclude = ["assets*", "benchmark*", "docs", "dist*", "playground*", "scripts*", "tests*", "data*", "output*"]
 
 [tool.wheel]
-exclude = ["assets*", "benchmark*", "docs", "dist*", "playground*", "scripts*", "tests*"]
+exclude = ["assets*", "benchmark*", "docs", "dist*", "playground*", "scripts*", "tests*", "data*", "output*"]

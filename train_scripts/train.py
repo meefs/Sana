@@ -874,7 +874,7 @@ def main(cfg: SanaConfig) -> None:
     if args.load_from is not None:
         config.model.load_from = args.load_from
     if config.model.load_from is not None and load_from:
-        _, missing, unexpected, _ = load_checkpoint(
+        load_result = load_checkpoint(
             checkpoint=config.model.load_from,
             model=model,
             model_ema=model_ema,
@@ -882,8 +882,9 @@ def main(cfg: SanaConfig) -> None:
             load_ema=config.model.resume_from.get("load_ema", False),
             null_embed_path=null_embed_path,
         )
-        logger.warning(f"Missing keys: {missing}")
-        logger.warning(f"Unexpected keys: {unexpected}")
+        _, missing, unexpected, _, _ = load_result
+        logger.warning(colored(f"Missing keys: {missing}", "red"))
+        logger.warning(colored(f"Unexpected keys: {unexpected}", "red"))
 
     # 4-2. model growth
     if config.model_growth is not None:
@@ -898,16 +899,19 @@ def main(cfg: SanaConfig) -> None:
 
     # 5. build dataloader
     config.data.data_dir = config.data.data_dir if isinstance(config.data.data_dir, list) else [config.data.data_dir]
+
     config.data.data_dir = [
         data if data.startswith(("https://", "http://", "gs://", "/", "~")) else osp.abspath(osp.expanduser(data))
         for data in config.data.data_dir
     ]
+
     num_replicas = int(os.environ["WORLD_SIZE"])
     rank = int(os.environ["RANK"])
+    if config.model.aspect_ratio_type is not None:
+        config.data.aspect_ratio_type = config.model.aspect_ratio_type
     dataset = build_dataset(
         asdict(config.data),
         resolution=image_size,
-        aspect_ratio_type=config.model.aspect_ratio_type,
         real_prompt_ratio=config.train.real_prompt_ratio,
         max_length=max_length,
         config=config,
@@ -1021,7 +1025,7 @@ def main(cfg: SanaConfig) -> None:
                 config.model.resume_from["checkpoint"] = config.model.load_from
 
         if config.model.resume_from["checkpoint"] is not None:
-            _, missing, unexpected, _ = load_checkpoint(
+            load_result = load_checkpoint(
                 **config.model.resume_from,
                 model=model,
                 model_ema=model_ema if not config.train.use_fsdp else None,
@@ -1031,8 +1035,9 @@ def main(cfg: SanaConfig) -> None:
                 null_embed_path=null_embed_path,
             )
 
-            logger.warning(f"Missing keys: {missing}")
-            logger.warning(f"Unexpected keys: {unexpected}")
+            _, missing, unexpected, _, _ = load_result
+            logger.warning(colored(f"Missing keys: {missing}", "red"))
+            logger.warning(colored(f"Unexpected keys: {unexpected}", "red"))
 
             path = osp.basename(config.model.resume_from["checkpoint"])
         try:
