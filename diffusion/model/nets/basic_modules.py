@@ -333,9 +333,8 @@ class ChunkGLUMBConvTemp(GLUMBConvTemp):
 class CachedGLUMBConvTemp(GLUMBConvTemp):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.kv_cache = None
 
-    def forward(self, x: torch.Tensor, HW=None, save_kv_cache=False, **kwargs) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, HW=None, save_kv_cache=False, kv_cache=None, **kwargs) -> torch.Tensor:
         B, N, C = x.shape
 
         assert len(HW) == 3, "HW must be a tuple of (T, H, W)"
@@ -357,53 +356,24 @@ class CachedGLUMBConvTemp(GLUMBConvTemp):
         x_t_conv_in = x_reshaped
         padded_size = 0
         # Use internal cache with the same logic as before
-        if self.kv_cache is not None:
-
-            if self.kv_cache[2] is not None:
+        if kv_cache is not None:
+            if kv_cache[2] is not None:
                 # Use previous chunk's temporal convolution cache
-                x_t_conv_in = torch.cat([self.kv_cache[2], x_reshaped], dim=2)  # B,C,P+T,HW
-                padded_size = self.kv_cache[2].shape[2]
+                x_t_conv_in = torch.cat([kv_cache[2], x_reshaped], dim=2)  # B,C,P+T,HW
+                padded_size = kv_cache[2].shape[2]
 
             if save_kv_cache:  # Save current chunk's cache for next chunk
-                self.kv_cache[2] = x_reshaped[:, :, -padding_size:, :].detach().clone()
-                # print(f"CachedGLUMBConvTemp: Saved internal tconv cache, shape: {self.kv_cache[2].shape}")
+                kv_cache[2] = x_reshaped[:, :, -padding_size:, :].detach().clone()
 
         t_conv_out = self.t_conv(x_t_conv_in)[:, :, padded_size:]
         x_out = x_reshaped + t_conv_out
 
         x_out = x_out.permute(0, 2, 3, 1).reshape(B, N, C)
 
+        if kv_cache is not None:
+            return x_out, kv_cache
+
         return x_out
-
-
-class SlimGLUMBConv(GLUMBConv):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # 移除 self.inverted_conv 层
-        del self.inverted_conv
-        self.out_dim = self.point_conv.out_dim
-
-    def forward(self, x: torch.Tensor, HW=None) -> torch.Tensor:
-        B, N, C = x.shape
-        if HW is None:
-            H = W = int(N**0.5)
-        else:
-            H, W = HW
-
-        # 直接使用 x，跳过 self.inverted_conv 层的调用
-        x = x.reshape(B, H, W, C).permute(0, 3, 1, 2)
-        # x = self.inverted_conv(x)
-        x = self.depth_conv(x)
-
-        x, gate = torch.chunk(x, 2, dim=1)
-        gate = self.glu_act(gate)
-        x = x * gate
-
-        x = self.point_conv(x)
-        x = x.reshape(B, self.out_dim, N).permute(0, 2, 1)
-
-        return x
 
 
 class MBConvPreGLU(nn.Module):

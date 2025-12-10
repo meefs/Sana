@@ -19,9 +19,8 @@
 #     ADM:   https://github.com/openai/guided-diffusion/blob/main/guided_diffusion
 #     IDDPM: https://github.com/openai/improved-diffusion/blob/main/improved_diffusion/gaussian_diffusion.py
 
-import random
-
 import numpy as np
+import torch
 from tqdm import tqdm
 
 from diffusion.model.utils import *
@@ -44,7 +43,7 @@ def edm_sampler(
     S_min=0,
     S_max=float("inf"),
     S_noise=1,
-    **kwargs
+    **kwargs,
 ):
     # Adjust noise levels based on what's supported by the network.
     sigma_min = max(sigma_min, net.sigma_min)

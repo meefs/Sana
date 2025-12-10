@@ -16,12 +16,9 @@
 
 import datetime
 import gc
-import getpass
 import hashlib
-import json
 import os
 import os.path as osp
-import random
 import time
 import warnings
 from copy import deepcopy
@@ -144,9 +141,11 @@ def log_validation(accelerator, config, model, logger, step, device, vae=None, i
                         order=2,
                         skip_type="time_uniform_flow",
                         method="multistep",
-                        flow_shift=config.scheduler.inference_flow_shift
-                        if config.scheduler.inference_flow_shift is not None
-                        else config.scheduler.flow_shift,
+                        flow_shift=(
+                            config.scheduler.inference_flow_shift
+                            if config.scheduler.inference_flow_shift is not None
+                            else config.scheduler.flow_shift
+                        ),
                     )
                 else:
                     raise ValueError(f"{sampler} not implemented")
@@ -470,7 +469,7 @@ def train(
                 ):
                     try:
                         model_output = loss_term["output"]
-                        noise = loss_term["noise"]
+                        # noise = loss_term["noise"]
                         x_t = loss_term["x_t"]
 
                         pred_x0 = x_t - timesteps.view(-1, 1, 1, 1, 1) / 1000.0 * model_output
@@ -481,7 +480,7 @@ def train(
                             tc_loss = (pred_diff - gt_diff).pow(2).mean() * config.train.temporal_coherence_weight
                             loss = loss + tc_loss
                             loss_term["tc"] = tc_loss.detach()
-                    except Exception as e:
+                    except Exception:
                         pass
 
                 accelerator.backward(loss)
@@ -747,9 +746,6 @@ def main(cfg: SanaVideoConfig) -> None:
 
     config = cfg
     args = cfg
-
-    # Record app start time at the beginning of main
-    app_start_time = int(time.time() * 1000)
 
     # 1.Initialize training mode
     if config.train.use_fsdp:
@@ -1042,7 +1038,6 @@ def main(cfg: SanaVideoConfig) -> None:
     if config.train.visualize and len(config.train.validation_prompts):
         valid_prompt_embed_suffix = f"{max_length}token_{config.text_encoder.text_encoder_name}_{text_embed_dim}.pth"
         validation_prompts = config.train.validation_prompts
-        validation_images = config.train.validation_images
         skip = True
         if config.text_encoder.chi_prompt:
             uuid_sys_prompt = hashlib.sha256(chi_prompt.encode()).hexdigest()

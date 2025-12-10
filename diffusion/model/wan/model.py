@@ -1,6 +1,5 @@
 # Copyright 2024-2025 The Alibaba Wan Team Authors. All rights reserved.
 import math
-import os
 from typing import Optional
 
 import torch
@@ -225,6 +224,7 @@ class WanSelfAttention(nn.Module):
         b, s, n, d = *x.shape[:2], self.num_heads, self.head_dim
         # print(f"In Attention, x dtype {x.dtype}")
         x_dtype = x.dtype
+
         # query, key, value function
         def qkv_fn(x):
             q = self.norm_q(self.q(x)).view(b, s, n, d)
@@ -1238,7 +1238,7 @@ class WanLinearAttentionModel(WanModel):
         self.inference_timestep = int(t[-1].item())
         if not self.training and self.inference_timestep >= 850:
             # NOTE: hard code now. Keep the first several steps using dense attention
-            block_mask = None
+            pass
 
         if self.model_type == "i2v":
             assert clip_fea is not None and y is not None
