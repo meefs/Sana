@@ -52,11 +52,9 @@ In summary, SANA-Video enables high-quality video synthesis at an unmatched spee
 
 ### 1. How to use Sana-Video Pipelines in `🧨diffusers`
 
-> [!IMPORTANT]
->
-> ```bash
-> pip install git+https://github.com/huggingface/diffusers
-> ```
+!!! Note
+Upgrade your diffusers to use `SanaVideoPipeline`:
+\> `bash     > pip install git+https://github.com/huggingface/diffusers     > `
 
 ### Text-to-Video: SanaVideoPipeline
 
@@ -188,16 +186,6 @@ python scripts/convert_scripts/convert_sana_video_to_diffusers.py --dump_path ou
 
 | Methods | Latency (s) | Speedup | #Params (B) | Total ↑ | Quality ↑ | Semantic / I2V ↑ |
 |---------|-------------|---------|-------------|---------|-----------|------------------|
-| Open-Sora-2.0 | 465 | 1.0× | 14 | 84.34 | 85.4 | 80.72 |
-| Wan2.1-14B | 484 | 1.0× | 14 | 83.69 | 85.59 | 76.11 |
-| Wan2.1-1.3B | 103 | 4.7× | 1.3 | 83.31 | 85.23 | 75.65 |
-| **SANA-Video** | **60** | **8.0×** | **2** | **84.17** | **84.85** | **81.46** |
-
-<details>
-<summary>Click to expand full comparison table</summary>
-
-| Methods | Latency (s) | Speedup | #Params (B) | Total ↑ | Quality ↑ | Semantic / I2V ↑ |
-|---------|-------------|---------|-------------|---------|-----------|------------------|
 | MAGI-1 | 435 | 1.1× | 4.5 | 79.18 | 82.04 | 67.74 |
 | Step-Video | 246 | 2.0× | 30 | 81.83 | 84.46 | 71.28 |
 | CogVideoX1.5 | 111 | 4.4× | 5 | 82.17 | 82.78 | 79.76 |
@@ -206,8 +194,6 @@ python scripts/convert_scripts/convert_sana_video_to_diffusers.py --dump_path ou
 | Wan2.1-14B | 484 | 1.0× | 14 | 83.69 | 85.59 | 76.11 |
 | Wan2.1-1.3B | 103 | 4.7× | 1.3 | 83.31 | 85.23 | 75.65 |
 | **SANA-Video** | **60** | **8.0×** | **2** | **84.17** | **84.85** | **81.46** |
-
-</details>
 
 #### Image-to-Video
 

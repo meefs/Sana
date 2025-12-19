@@ -23,12 +23,14 @@
 
 ### 1. How to use `SanaSprintPipeline` with `🧨diffusers`
 
-> [!IMPORTANT]
-> It is now under construction [PR](https://github.com/huggingface/diffusers/pull/11074)
->
-> ```bash
-> pip install git+https://github.com/huggingface/diffusers
-> ```
+!!! note "Important"
+Upgrade your diffusers to use `SanaSprintPipeline`:
+
+````
+```bash
+pip install git+https://github.com/huggingface/diffusers
+```
+````
 
 ```python
 # test sana sprint
@@ -106,7 +108,7 @@ bash train_scripts/train_scm_ladd.sh \
 ## Convert pth to diffusers safetensor
 
 ```bash
-python tools/convert_scripts/convert_sana_to_diffusers.py \
+python scripts/convert_scripts/convert_sana_to_diffusers.py \
       --orig_ckpt_path Efficient-Large-Model/Sana_Sprint_1.6B_1024px/checkpoints/Sana_Sprint_1.6B_1024px.pth \
       --model_type SanaSprint_1600M_P1_D20 \
       --scheduler_type scm \
@@ -121,3 +123,19 @@ python tools/convert_scripts/convert_sana_to_diffusers.py \
 |-----------------------------------------------------------------------------------------------|-----------------|------------------------|-------------|------------|----------|-----------|------------|
 | **[Sana-Sprint_0.6B](<>)** | 2 | 6.46 | 0.25 | 0.6 | 6.54 | 28.40 | 0.76 |
 | **[Sana-Sprint-1.6B](https://huggingface.co/Efficient-Large-Model/Sana_Sprint_1.6B_1024px)** | 2 | 5.68 | 0.24 | 1.6 | **6.50** | **28.45** | **0.77** |
+
+______________________________________________________________________
+
+## Citation
+
+```bibtex
+@misc{chen2025sanasprint,
+      title={SANA-Sprint: One-Step Diffusion with Continuous-Time Consistency Distillation},
+      author={Junsong Chen and Shuchen Xue and Yuyang Zhao and Jincheng Yu and Sayak Paul and Junyu Chen and Han Cai and Enze Xie and Song Han},
+      year={2025},
+      eprint={2503.09641},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2503.09641},
+}
+```
