@@ -88,7 +88,7 @@ We introduce **SANA**, a series of efficient diffusion models for high-resolutio
 - **[SANA](https://nvlabs.github.io/Sana/)**: Text-to-image generation up to 4K resolution, **20× smaller and 100× faster** than Flux-12B.
 - **[SANA-1.5](https://nvlabs.github.io/Sana/Sana-1.5/)**: Efficient training-time and inference-time compute scaling for better quality.
 - **[SANA-Sprint](https://nvlabs.github.io/Sana/Sprint/)**: One/few-step generation via sCM distillation, **0.1s per 1024px image** on H100.
-  | **[SANA-Video/LongSANA](https://nvlabs.github.io/Sana/Video/)** | Efficient video generation with Block Linear Attention / with [LongLive](https://github.com/NVlabs/LongLive)|
+- **[SANA-Video/LongSANA](https://nvlabs.github.io/Sana/Video/)**: Efficient video generation with Block Linear Attention / with [LongLive](https://github.com/NVlabs/LongLive).
 
 **Key Techniques:**
 
