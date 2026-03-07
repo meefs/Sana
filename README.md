@@ -31,10 +31,6 @@ Join our [Discord](https://discord.gg/rde6eaE5Ta) to engage in discussions with 
   <img src="asset/Sana.jpg" width="90%" alt="teaser_page1"/>
 </p>
 
-## 🔥🔥 News
-
-Project page for SANA
-
 ## News
 
 - 🔥 [2026/03] 💪 **Post Training Infra: SANA × Cosmos-RL** — We partner with [Cosmos-RL](https://github.com/nvidia-cosmos/cosmos-rl) to provide a complete RL infrastructure for SANA. You can now post-train (SFT/RL) SANA-Image and SANA-Video with state-of-the-art algorithms (e.g. Diffusion-NFT, Flow-GRPO), preset configs, reward services, and flexible datasets. See [SANA on Cosmos-RL](https://github.com/nvidia-cosmos/cosmos-rl/blob/main/examples/sana.md) and our [Cosmos-RL integration doc](https://nvlabs.github.io/Sana/docs/sana_cosmos_rl/).
