@@ -207,8 +207,9 @@ We will try our best to achieve
 - [✅] SANA-1.5 (Larger model size / Inference Scaling)
 - [✅] SANA-Sprint: Few-step generator
 - [✅] Faster DCAE-Lite [weight](https://huggingface.co/dc-ai/dc-ae-lite-f32c32-diffusers)
-- [✅] Better re-construction F32/F64 [VAEs](https://github.com/dc-ai-projects/DC-Gen).
+- [✅] Better re-construction F32/F64 [VAEs](https://github.com/dc-ai-projects/DC-Gen)
 - [✅] SANA-Video: Linear DiT Video model, and real-time minute-length video generation
+- [✅] RL Post-training: collaborate with [Cosmos-RL](https://github.com/nvidia-cosmos/cosmos-rl)
 - [🚀] See you in the future
 
 ## 🤗 Acknowledgements
@@ -226,6 +227,7 @@ Thanks to the following open-sourced projects:
 - [Open-Sora](https://github.com/hpcaitech/Open-Sora)
 - [Wan](https://github.com/Wan-Video/Wan2.1)
 - [LongLive](https://github.com/NVlabs/LongLive)
+- [Cosmos-RL](https://github.com/nvidia-cosmos/cosmos-rl)
 
 Thanks [Paper2Video](https://showlab.github.io/Paper2Video/) for generating Jeason presenting SANA😊. Refer to [Paper2Video](https://showlab.github.io/Paper2Video/) for more details.
 
@@ -237,7 +239,7 @@ Thanks [Paper2Video](https://showlab.github.io/Paper2Video/) for generating Jeas
 
 ## Contribution
 
-Thanks goes to these wonderful contributors:
+Thanks go to these wonderful contributors:
 
 <a href="https://github.com/NVlabs/Sana/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=NVlabs/Sana" />
