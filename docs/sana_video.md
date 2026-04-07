@@ -26,7 +26,7 @@
 
 ## 📽️ About SANA-Video
 
-**SANA-Video** is a small diffusion model designed for **efficient video generation**, capable of synthesizing high-resolution videos (up to 720 x 1280) and **minute-length duration** with strong text-video alignment, while maintaining a remarkably fast speed.It enables low-cost, high-quality video generation and can be deployed efficiently on consumer GPUs like the RTX 5090.
+**SANA-Video** is a small diffusion model designed for **efficient video generation**, capable of synthesizing high-resolution videos (up to **2K resolution** with Two-Stage Refiner) and **minute-length duration** with strong text-video alignment, while maintaining a remarkably fast speed. It enables low-cost, high-quality video generation and can be deployed efficiently on consumer GPUs like the RTX 5090.
 
 SANA-Video's Core Contributions:
 
@@ -34,6 +34,7 @@ SANA-Video's Core Contributions:
 - **Long-Sequence Capability (Constant-Memory KV Cache)**: Introduces a **Constant-Memory KV cache for Block Linear Attention**. This block-wise autoregressive approach uses a fixed-memory state derived from the cumulative properties of linear attention, which eliminates the need for a traditional KV cache, enabling **efficient minute-long video generation**.
 - **Low Training Cost**: Achieved effective data filters and model training strategies, narrowing the training cost to only **12 days on 64 H100 GPUs**, which is just **1%** of the cost of MovieGen.
 - **State-of-the-Art Speed and Performance**: Achieves competitive performance compared to modern SOTA small diffusion models (e.g., Wan 2.1-1.3B) while being **16x faster** in measured latency。Deployment Acceleration: Can be deployed on RTX 5090 GPUs with NVFP4 precision, accelerating the inference speed of generating a 5-second 720p video from 71s to 29s (**2.4x speedup**).
+- **Two-Stage Inference Paradigm (["Bet Small to Win Big"](https://nvlabs.github.io/Sana/Video/bet-small-win-big/blog.html))**: Decouples video generation into a lightweight 2B base model for temporal dynamics (Structure) and a step-distilled [LTX2 Refiner](https://arxiv.org/abs/2601.03233) for spatial resolution (Texture). This "Small Model + 2-Stage" strategy delivers **2K quality at 720p latency**, achieving a massive resolution upgrade at zero additional cost to the user.
 
 In summary, SANA-Video enables high-quality video synthesis at an unmatched speed and low operational cost.
 
@@ -182,9 +183,24 @@ bash inference_video_scripts/inference_sana_video.sh \
       --work_dir output/sana_t2v_720p_results
 ```
 
+#### Image-to-Video (720p)
+
+```bash
+bash inference_video_scripts/inference_sana_video.sh \
+      --np 1 \
+      --config configs/sana_video_config/Sana_2000M_720px_ltx2vae_AdamW_fsdp.yaml \
+      --model_path hf://Efficient-Large-Model/SANA-Video_2B_720p/checkpoints/SANA_Video_2B_720p.pth \
+      --txt_file=asset/samples/sample_i2v.txt \
+      --task=ltx \
+      --cfg_scale 6 \
+      --motion_score 30 \
+      --flow_shift 8 \
+      --work_dir output/sana_ti2v_720p_results
+```
+
 ### 4. Sana Video + LTX2 Refiner Pipeline
 
-Use Sana-Video to generate video latents, then refine with LTX-2 Stage-2 for enhanced quality. The 720p Sana model is recommended: [SANA-Video_2B_720p_diffusers](https://huggingface.co/Efficient-Large-Model/SANA-Video_2B_720p_diffusers). For more details, check our [📚 Online Documentation](https://nvlabs.github.io/Sana/docs/sana_video/#4-sana-video-ltx2-refiner-pipeline) and [📝 Blog: Bet Small, Win Big](https://nvlabs.github.io/Sana/Video/bet-small-win-big/blog.html).
+We adopt a [**Two-Stage Inference Paradigm**](https://nvlabs.github.io/Sana/Video/bet-small-win-big/blog.html): Stage 1 generates video latents with SANA-Video, Stage 1.5 upsamples the latent spatially, and Stage 2 refines with a step-distilled [LTX2 Refiner](https://arxiv.org/abs/2601.03233) for 2K quality at 720p latency. See the [full diffusers pipeline code](../sana_video_inference/#sana-video-ltx2-refiner-pipeline) for details.
 
 ```bash
 python app/sana_video_refiner_pipeline_diffusers.py \
@@ -196,6 +212,19 @@ python app/sana_video_refiner_pipeline_diffusers.py \
       --sana_frames 81 \
       --output_path sana_ltx2_refined.mp4
 ```
+
+**Result Comparison:** Stage 1 base output (Left) vs. Stage 2 Refined output (Right).
+
+<div style="display: flex; gap: 16px; margin: 20px 0; width: 100%;">
+  <div style="flex: 1; min-width: 0; text-align: center;">
+    <video src="https://nvlabs.github.io/Sana/Video/refiner/sana_ori.mp4" autoplay muted loop playsinline style="width: 100%; border-radius: 8px; display: block;"></video>
+    <p style="margin-top: 8px; font-size: 14px; color: #666;"><strong>Stage 1:</strong> SANA-Video Base (720p)</p>
+  </div>
+  <div style="flex: 1; min-width: 0; text-align: center;">
+    <video src="https://nvlabs.github.io/Sana/Video/refiner/sana_refiner.mp4" autoplay muted loop playsinline style="width: 100%; border-radius: 8px; display: block;"></video>
+    <p style="margin-top: 8px; font-size: 14px; color: #666;"><strong>Stage 2:</strong> LTX2 Refined (2K)</p>
+  </div>
+</div>
 
 ## 💻 How to Train
 

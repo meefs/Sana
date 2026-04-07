@@ -81,6 +81,7 @@ nav:
   - Advanced:
       - ControlNet: sana_controlnet.md
       - LoRA & DreamBooth: sana_lora_dreambooth.md
+      - Cosmos-RL: sana_cosmos_rl.md
   - Integrations:
       - ComfyUI: ComfyUI/comfyui.md
       - SGLang: sglang.md
@@ -93,4 +94,6 @@ extra:
   generator: false
 extra_css:
   - stylesheets/extra.css
+extra_javascript:
+  - stylesheets/extra.js
 copyright: Copyright &copy; 2024-2025 Sana Team

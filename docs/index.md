@@ -4,7 +4,7 @@
 
 <h3 align="center"><b>⚡️ Efficient High-Resolution Image & Video Generation</b></h3>
 
-<h4 align="center">ICLR 2025 Oral | ICML 2025 | ICCV 2025 Spotlight</h4>
+<h4 align="center">ICLR 2025 Oral | ICML 2025 | ICCV 2025 Spotlight | ICLR 2026 Oral</h4>
 
 <p align="center">
   <a href="https://nvlabs.github.io/Sana/"><img src="https://img.shields.io/static/v1?label=Project&message=Sana&color=blue&logo=github-pages" alt="Sana"></a>
