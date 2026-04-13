@@ -24,7 +24,7 @@ dependencies = [
     "wheel",
     "psutil",
     "ninja",
-    "diffusers@git+https://github.com/huggingface/diffusers.git",
+    "diffusers>=0.37.0",
     "clip@git+https://github.com/openai/CLIP.git",
     "gradio",
     "image-reward",
