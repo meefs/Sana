@@ -24,7 +24,7 @@ dependencies = [
     "wheel",
     "psutil",
     "ninja",
-    "diffusers==0.35.0",
+    "diffusers>=0.37.0",
     "clip@git+https://github.com/openai/CLIP.git",
     "gradio",
     "image-reward",
@@ -60,6 +60,10 @@ dependencies = [
     "imageio[pyav,ffmpeg]",
     "qwen-vl-utils",
     "lmdb",
+    "absl-py",
+    "ml_collections",
+    "hpsv2",
+    "open_clip_torch",
 ]
 
 
