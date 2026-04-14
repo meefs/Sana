@@ -15,6 +15,12 @@ def _get_config(n_gpus=8, dataset="pickscore", reward_fn=None):
     config = base.get_config()
     config.dataset = os.path.join(os.getcwd(), f"dataset/{dataset}")
     config.native_config = "configs/sol_rl/Sana1.0_1600M_linear.yaml"
+    config.native_model_path = os.environ.get(
+        "SANA_NATIVE_MODEL_PATH", os.path.join(os.getcwd(), "output/pretrained_models/SANA_LinearFFN.pth")
+    )
+    config.native_model_source = os.environ.get(
+        "SANA_NATIVE_MODEL_SOURCE", "hf://yitongl/SANA_LinearFFN/SANA_LinearFFN.pth"
+    )
     config.resolution = 1024
     config.train.lora_target_modules = [
         "attn.qkv",
@@ -162,32 +168,53 @@ def sana_diffusionnft_imagereward():
 
 
 # ============================================================================
-# Naive Scaling: 24-in-96, BF16 compile model (brute-force scaling)
+# Naive Scaling: 24-in-96, PEFT model (brute-force scaling)
 # ============================================================================
 
 
 def sana_naive_scaling_pickscore():
-    cfg = _build_reward("pickscore", 24, 96)
-    cfg.fullrollout_model = "compile"
-    return _set_run(cfg, "sana_naive_scaling_pickscore")
+    return _set_run(_build_reward("pickscore", 24, 96), "sana_naive_scaling_pickscore")
 
 
 def sana_naive_scaling_clipscore():
-    cfg = _build_reward("clipscore", 24, 96)
-    cfg.fullrollout_model = "compile"
-    return _set_run(cfg, "sana_naive_scaling_clipscore")
+    return _set_run(_build_reward("clipscore", 24, 96), "sana_naive_scaling_clipscore")
 
 
 def sana_naive_scaling_hpsv2():
-    cfg = _build_reward("hpsv2", 24, 96)
-    cfg.fullrollout_model = "compile"
-    return _set_run(cfg, "sana_naive_scaling_hpsv2")
+    return _set_run(_build_reward("hpsv2", 24, 96), "sana_naive_scaling_hpsv2")
 
 
 def sana_naive_scaling_imagereward():
+    return _set_run(_build_reward("imagereward", 24, 96), "sana_naive_scaling_imagereward")
+
+
+# ============================================================================
+# Compile: 24-in-96, BF16 compile model
+# ============================================================================
+
+
+def sana_compile_pickscore():
+    cfg = _build_reward("pickscore", 24, 96)
+    cfg.fullrollout_model = "compile"
+    return _set_run(cfg, "sana_compile_pickscore")
+
+
+def sana_compile_clipscore():
+    cfg = _build_reward("clipscore", 24, 96)
+    cfg.fullrollout_model = "compile"
+    return _set_run(cfg, "sana_compile_clipscore")
+
+
+def sana_compile_hpsv2():
+    cfg = _build_reward("hpsv2", 24, 96)
+    cfg.fullrollout_model = "compile"
+    return _set_run(cfg, "sana_compile_hpsv2")
+
+
+def sana_compile_imagereward():
     cfg = _build_reward("imagereward", 24, 96)
     cfg.fullrollout_model = "compile"
-    return _set_run(cfg, "sana_naive_scaling_imagereward")
+    return _set_run(cfg, "sana_compile_imagereward")
 
 
 # ============================================================================
