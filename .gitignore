@@ -2,6 +2,7 @@
 *_dev.py
 *_dev.sh
 .count.db
+.claude/
 .gradio/
 .idea/
 *.png
@@ -195,3 +196,21 @@ cython_debug/
 checkpoints
 .deepspeed*
 prompts
+
+results/
+# Sana-WM: internal-only test scripts (kept locally, never shipped)
+inference_video_scripts/_internal_*
+
+# Sana-WM: internal-only docs + helper scripts
+_internal/
+
+# Sana-WM: locally-symlinked weights (downloaded on demand via hf://)
+pretrained_models/
+hf*/
+
+# Allow Sana-WM public demo assets (override the global *.png/*.npy ignore).
+!asset/sana_wm/
+!asset/sana_wm/*.png
+!asset/sana_wm/*.npy
+!asset/sana_wm/*.txt
+!asset/sana-wm-logo.png

@@ -1,3 +1,19 @@
+# Copyright 2024 NVIDIA CORPORATION & AFFILIATES
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import json
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -138,6 +154,11 @@ class AEConfig(BaseConfig):
     vae_stride: Optional[List[int]] = None
     if_cache: bool = False
     cache_dir: Optional[str] = None
+    # Framewise / tiling fields used by LTX2VAE_diffusers for long-video decode.
+    use_framewise_encoding: bool = False
+    use_framewise_decoding: bool = False
+    tile_sample_stride_num_frames: int = 64
+    tile_sample_min_num_frames: int = 96
     extra: Any = None
 
 
