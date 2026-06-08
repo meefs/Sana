@@ -33,6 +33,8 @@ raise ``NotImplementedError``:
 
 from __future__ import annotations
 
+import os
+
 import torch
 import torch.nn as nn
 
@@ -56,6 +58,17 @@ from diffusion.model.ops.fused_gdn import (
     prepare_rope_tables,
 )
 from diffusion.model.ops.fused_gdn_chunkwise import cam_scan_bidi_chunkwise
+
+# CUDA chunkwise cam scan (on by default; set SANA_GDN_CUDA=0 to disable): bf16
+# CUDA kernels that read q/k/v [B,H,D,N] directly + write the transposed output
+# directly (no packing/transpose glue) -> ~38x less cam transient VRAM. The
+# drop-in falls back to Triton for unsupported shapes/dtype and, if the CUDA
+# extension can't build (no nvcc/toolkit), latches off to Triton at runtime.
+if os.environ.get("SANA_GDN_CUDA", "1") != "0":
+    try:
+        from diffusion.model.ops.fused_gdn_chunkwise_cuda import cam_scan_bidi_chunkwise_cuda as cam_scan_bidi_chunkwise
+    except Exception as _e:
+        print(f"[SANA_GDN_CUDA] CUDA cam path unavailable ({_e}); using Triton")
 from diffusion.model.registry import ATTENTION_BLOCKS
 
 
@@ -179,29 +192,36 @@ class BidirectionalGDNTriton(BidirectionalGDN):
 
 
 @ATTENTION_BLOCKS.register_module()
-class BidirectionalGDNUCPESinglePathLiteLATriton(BidirectionalGDNUCPESinglePathLiteLA):
-    """Bidirectional UCPE camera-controlled GDN with a Triton main branch.
+class BidirectionalGDNUCPESinglePathLiteLABothTriton(BidirectionalGDNUCPESinglePathLiteLA):
+    """Bidirectional UCPE camera-controlled GDN with **both** branches on Triton.
 
-    Inherits the entire camera branch (``_forward_cam_branch``),
-    ``_prepare_cam_qkv``, every sub-module and every checkpoint key from
-    :class:`BidirectionalGDNUCPESinglePathLiteLA`.  The **only** behavioural
-    delta is that the main-branch GDN scan dispatches through
-    :class:`BidirectionalGDNTriton.forward` instead of the inherited
-    :class:`BidirectionalGDN.forward`.
+    Main branch: :class:`BidirectionalGDNTriton`-fused scan, dispatched via
+    ``BidirectionalGDNTriton.forward(self, ...)`` from this class's
+    :meth:`forward` because MRO would otherwise pick up the torch
+    :class:`BidirectionalGDN` parent.
 
-    Because ``_GDNUCPEBase.forward`` routes the main branch via
-    ``super().forward(...)`` — which MRO-resolves to
-    :class:`BidirectionalGDN`, not our Triton variant — we re-implement the
-    dual-branch forward here to explicitly call
-    ``BidirectionalGDNTriton.forward(self, ...)``.  The body is otherwise
-    bit-identical to the parent's ``forward``.
+    Cam branch: :meth:`_forward_cam_branch` runs a fused Triton pipeline:
 
-    The ``use_autograd_kernel`` flag is stored on this instance and consulted
-    inside :meth:`BidirectionalGDNTriton.forward` (the dispatch passes
-    ``self``, so the flag is visible to the main-branch forward).  The cam
-    branch is the inherited torch path; use
-    :class:`BidirectionalGDNUCPESinglePathLiteLABothTriton` for a fully
-    Triton + autograd-aware cam branch.
+        1. Torch QKV linear + bidirectional short conv on K.
+        2. UCPE ``P / P_T / P_inv`` from ``camera_conditions``.
+        3. Sliced cam-branch RoPE → interleaved ``(N, D/2)`` cos/sin tables.
+        4. Fused prep kernel (RMSNorm + ReLU + K-scale + UCPE 4x4 + RoPE),
+           emitting ``inflation_sq`` for Dynamic Beta Discounting.
+        5. Beta discounting via ``inflation_sq``.
+        6. Fused forward scan (``reverse=False``) over the full sequence.
+        7. Fused reverse scan (``reverse=True``) over the full sequence —
+           the kernel applies flip-and-shift internally, so no per-chunk
+           loop is needed.
+        8. Inverse UCPE (``apply_fn_o``) in torch.
+
+    State-dict keys are identical to
+    :class:`BidirectionalGDNUCPESinglePathLiteLA`.
+
+    Set ``use_autograd_kernel=True`` to enable autograd mode for both
+    branches: the main branch goes through :func:`fused_bigdn_forward_with_grad`
+    and the cam branch through :func:`cam_prep_func_with_grad` +
+    :func:`cam_scan_func_with_grad` (torch-recompute backward fallback).
+    Forward cost is unchanged.
     """
 
     def __init__(self, *args, use_autograd_kernel: bool = False, **kwargs):
@@ -219,11 +239,6 @@ class BidirectionalGDNUCPESinglePathLiteLATriton(BidirectionalGDNUCPESinglePathL
         chunk_size: int | None = None,
         **kwargs: object,
     ) -> torch.Tensor:
-        if self.cam_debug_ratios:
-            self.reset_cam_debug_stats()
-        if self.training:
-            self._cam_debug_step_counter += 1
-
         # Pre-compute shared gates once for both branches.
         if HW is not None:
             precomputed_gates = self._compute_frame_gates(x, HW)
@@ -269,38 +284,6 @@ class BidirectionalGDNUCPESinglePathLiteLATriton(BidirectionalGDNUCPESinglePathL
         combined = main_raw + cam_contrib
         combined = self._apply_output_gate(combined, x)
         return self.proj(combined.to(self.proj.weight.dtype))
-
-
-@ATTENTION_BLOCKS.register_module()
-class BidirectionalGDNUCPESinglePathLiteLABothTriton(BidirectionalGDNUCPESinglePathLiteLATriton):
-    """Bidirectional UCPE camera-controlled GDN with **both** branches on Triton.
-
-    Subclasses :class:`BidirectionalGDNUCPESinglePathLiteLATriton` (which
-    already rewires the main GDN scan) and replaces
-    :meth:`_forward_cam_branch` with a fused Triton camera pipeline:
-
-        1. Torch QKV linear + bidirectional short conv on K.
-        2. UCPE ``P / P_T / P_inv`` from ``camera_conditions``.
-        3. Sliced cam-branch RoPE → interleaved ``(N, D/2)`` cos/sin tables.
-        4. Fused prep kernel (RMSNorm + ReLU + K-scale + UCPE 4x4 + RoPE),
-           emitting ``inflation_sq`` for Dynamic Beta Discounting.
-        5. Beta discounting via ``inflation_sq`` (mirrors torch path).
-        6. Fused forward scan (``reverse=False``) over the full sequence.
-        7. Fused reverse scan (``reverse=True``) over the full sequence —
-           the kernel applies flip-and-shift internally, so no per-chunk
-           loop is needed.
-        8. Inverse UCPE (``apply_fn_o``) in torch.
-
-    State-dict keys are identical to
-    :class:`BidirectionalGDNUCPESinglePathLiteLA`.
-
-    Set ``use_autograd_kernel=True`` (inherited from
-    :class:`BidirectionalGDNUCPESinglePathLiteLATriton`) to enable autograd
-    mode for both branches: the main branch goes through
-    :func:`fused_bigdn_forward_with_grad` and the cam branch through
-    :func:`cam_prep_func_with_grad` + :func:`cam_scan_func_with_grad`
-    (torch-recompute backward fallback).  Forward cost is unchanged.
-    """
 
     def _forward_cam_branch(
         self,
