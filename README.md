@@ -1,5 +1,5 @@
 <p align="center" style="border-radius: 10px">
-  <img src="asset/logo.png" width="35%" alt="logo"/>
+  <img src="https://huggingface.co/datasets/Efficient-Large-Model/Sana-assets/resolve/main/asset/logo.png" width="35%" alt="logo"/>
 </p>
 
 <h3 align="center">
@@ -30,7 +30,7 @@
 Join our [Discord](https://discord.gg/rde6eaE5Ta) to engage in discussions with the community! If you have any questions, run into issues, or are interested in contributing, don't hesitate to reach out!
 
 <p align="center" border-radius="10px">
-  <img src="asset/Sana.jpg" width="90%" alt="teaser_page1"/>
+  <img src="https://huggingface.co/datasets/Efficient-Large-Model/Sana-assets/resolve/main/asset/Sana.jpg" width="90%" alt="teaser_page1"/>
 </p>
 
 ## News
@@ -116,7 +116,7 @@ We introduce **SANA**, a series of efficient diffusion models for high-resolutio
 **In summary**, SANA is a fully open-source framework integrating **efficient training, fast inference, and flexible deployment** for both image and video generation. Deployable on laptop GPUs with **< 8GB VRAM** via 4-bit quantization.
 
 <p align="center" border-raduis="10px">
-  <img src="asset/all.png" width="90%" alt="teaser_page2"/>
+  <img src="https://huggingface.co/datasets/Efficient-Large-Model/Sana-assets/resolve/main/asset/all.png" width="90%" alt="teaser_page2"/>
 </p>
 
 ## Quick Start
@@ -245,7 +245,7 @@ Thanks [Paper2Video](https://showlab.github.io/Paper2Video/) for generating Jeas
 
 <div align="center">
   <a href="https://showlab.github.io/Paper2Video/assets/huang/huang.mp4" target="_blank">
-    <img src="asset/paper2video.jpg" alt="Presenting Video of SANA" style="width: 60%; margin: 0 auto; display: block">
+    <img src="https://huggingface.co/datasets/Efficient-Large-Model/Sana-assets/resolve/main/asset/paper2video.jpg" alt="Presenting Video of SANA" style="width: 60%; margin: 0 auto; display: block">
   </a>
 </div>
 
