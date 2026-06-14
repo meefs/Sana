@@ -469,7 +469,6 @@ class V2VBiGDNAttention(nn.Module):
             q_rot = q
             k_rot = k
 
-
         beta, decay = self._compute_frame_gates(x, HW)
 
         dtype_orig = x.dtype
@@ -542,6 +541,7 @@ class V2VBiGDNAttention(nn.Module):
         if self.output_gate is not None:
             out = out * F.silu(self.output_gate(x).to(torch.float32)).to(dtype)
         return self.proj(out)
+
 
 @ATTENTION_BLOCKS.register_module()
 class V2VStateCachedBiGDNAttention(nn.Module):
@@ -992,7 +992,6 @@ class V2VAfterRoPEGatedSoftmaxAttention(nn.Module):
         k = rearrange(k, "b h c n -> b n h c")
         v = rearrange(v, "b h c n -> b n h c")
 
-
         q = q[:, -N:].contiguous()
         k = k.contiguous()
         v = v.contiguous()
@@ -1110,7 +1109,6 @@ class V2VGatedSoftmaxAttention(nn.Module):
         if rotary_emb is not None:
             q = self._apply_rotary_emb(q, rotary_emb)
             k = self._apply_rotary_emb(k, rotary_emb)
-
 
         q = q.contiguous()
         k = k.contiguous()

@@ -19,12 +19,9 @@
 from __future__ import annotations
 
 import copy
-import importlib.util
 import os
-import sys
 
 import torch
-
 from diffusers import FlowMatchEulerDiscreteScheduler
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import retrieve_timesteps

@@ -25,10 +25,10 @@ os.environ.setdefault("USE_CHUNKWISE_GDN", "1")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import imageio
-import pyrallis
-import torch
 import imageio.v3 as iio
 import numpy as np
+import pyrallis
+import torch
 import torchvision.transforms as T
 from accelerate import Accelerator
 
@@ -161,9 +161,15 @@ def parse_args():
     parser.add_argument("--motion_score", type=int, default=None)
     parser.add_argument("--num_cached_blocks", type=int, default=2)
     parser.add_argument("--sink_token", type=str2bool, default=True)
-    parser.add_argument("--save_latent", action="store_true", help="Save initial/source/generated latents for debugging.")
-    parser.add_argument("--input_latent_path", default=None, help="Debug path containing [noise, source, output] latents.")
-    parser.add_argument("--input_text_embed_path", default=None, help="Debug path containing prompt/negative text embeds.")
+    parser.add_argument(
+        "--save_latent", action="store_true", help="Save initial/source/generated latents for debugging."
+    )
+    parser.add_argument(
+        "--input_latent_path", default=None, help="Debug path containing [noise, source, output] latents."
+    )
+    parser.add_argument(
+        "--input_text_embed_path", default=None, help="Debug path containing prompt/negative text embeds."
+    )
     args = parser.parse_args()
 
     mode_defaults = DEFAULTS[args.mode]
@@ -303,9 +309,11 @@ def main():
     flow_shift = (
         args.flow_shift
         if args.flow_shift is not None
-        else config.scheduler.inference_flow_shift
-        if config.scheduler.inference_flow_shift is not None
-        else config.scheduler.flow_shift
+        else (
+            config.scheduler.inference_flow_shift
+            if config.scheduler.inference_flow_shift is not None
+            else config.scheduler.flow_shift
+        )
     )
 
     vae = get_vae(config.vae.vae_type, config.vae.vae_pretrained, device=device, dtype=vae_dtype, config=config.vae)
