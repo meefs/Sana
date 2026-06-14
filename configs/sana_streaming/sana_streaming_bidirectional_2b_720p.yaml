@@ -5,12 +5,12 @@ model:
   mixed_precision: bf16
   fp32_attention: true
   multi_scale: true
-  attn_type: V2VStateCachedBiGDNAttention
+  attn_type: V2VBiGDNAttention
   softmax_ratio: 0.25
   softmax_layer_indices:
-  softmax_attn_type: V2VAfterRoPEGatedSoftmaxAttention
+  softmax_attn_type: V2VGatedSoftmaxAttention
   linear_head_dim: 112
-  ffn_type: CachedGLUMBConvTemp
+  ffn_type: GLUMBConvTemp
   t_kernel_size: 3
   mlp_acts:
     - silu
@@ -18,12 +18,12 @@ model:
     -
   mlp_ratio: 3
   use_pe: true
-  pos_embed_type: casual_wan_rope
+  pos_embed_type: wan_rope
   qk_norm: true
   cross_norm: true
   class_dropout_prob: 0.1
 vae:
-  vae_type: LTX2VAE_chunk_tile
+  vae_type: LTX2VAE_diffusers
   vae_pretrained: Lightricks/LTX-2
   weight_dtype: bfloat16
   vae_latent_dim: 128
@@ -50,4 +50,4 @@ scheduler:
   pred_sigma: false
   flow_shift: 3.0
   inference_flow_shift: 8.0
-  vis_sampler: sana_v2v_streaming_sampler
+  vis_sampler: flow_dpm-solver

@@ -220,7 +220,7 @@ We will try our best to achieve
 - [✅] SANA-Video: Linear DiT Video model, and real-time minute-length video generation
 - [✅] RL Post-training: collaborate with [Cosmos-RL](https://github.com/nvidia-cosmos/cosmos-rl)
 - [✅] SANA World Model
-- [] SANA Streaming Video-to-Video Editing
+- [✅] SANA-Streaming Video-to-Video Editing
 - [🚀] See you in the future
 
 ## 🤗 Acknowledgements

@@ -36,6 +36,7 @@ from diffusion.model.ops import (
     _precompute_inv_rms,
     _prepare_fused_gdn_inputs,
     _resolve_gdn_variant,
+    fused_bidi_merge,
     fused_bidi_stateful_chunkwise_shared_phase_a,
     prepare_rope_tables,
 )
@@ -420,7 +421,7 @@ class V2VBiGDNAttention(nn.Module):
         else:
             gate_bnhd = None
 
-        out = _merge_gdn_num_den(num_fwd, num_bwd, den_fwd, den_bwd, self.eps, gate=gate_bnhd)
+        out = fused_bidi_merge(num_fwd, num_bwd, den_fwd, den_bwd, self.eps, gate=gate_bnhd)
         out = out.reshape(B, N, C).to(x.dtype)
 
         out = self.proj(out)
@@ -697,7 +698,7 @@ class V2VStateCachedBiGDNAttention(nn.Module):
         num_bwd, den_bwd = None, None
 
         gate_bnhd = self.output_gate(x).reshape(B, N, H, D) if self.output_gate is not None else None
-        out = _merge_gdn_num_den(num_fwd, num_bwd, den_fwd, den_bwd, self.eps, gate=gate_bnhd)
+        out = fused_bidi_merge(num_fwd, num_bwd, den_fwd, den_bwd, self.eps, gate=gate_bnhd)
         out = out.reshape(B, N, C).to(x.dtype)
 
         out = self.proj(out)

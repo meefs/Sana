@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .fused_gdn import _precompute_inv_rms, prepare_rope_tables
+from .fused_gdn import _precompute_inv_rms, fused_bidi_merge, prepare_rope_tables
 from .fused_gdn_chunkwise import fused_bidi_stateful_chunkwise_shared_phase_a
 
 
@@ -83,6 +83,7 @@ __all__ = [
     "_precompute_inv_rms",
     "_prepare_fused_gdn_inputs",
     "_resolve_gdn_variant",
+    "fused_bidi_merge",
     "fused_bidi_stateful_chunkwise_shared_phase_a",
     "prepare_rope_tables",
 ]

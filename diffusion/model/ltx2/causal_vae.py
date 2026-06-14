@@ -2154,7 +2154,7 @@ class AutoencoderKLCausalLTX2Video(ModelMixin, AutoencoderMixin, ConfigMixin, Fr
     ) -> DecoderOutput | torch.Tensor:
         """Decode latent videos with temporal-only tiling.
 
-        This is used by Sana-V2V streaming inference with the public LTX-2 VAE
+        This is used by SANA-Streaming inference with the public LTX-2 VAE
         weights. It avoids spatial tiling and only chunks along latent time,
         matching the release recipe used for long 720p V2V editing.
         """

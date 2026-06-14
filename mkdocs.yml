@@ -76,7 +76,7 @@ nav:
       - Inference Scaling: inference_scaling/inference_scaling.md
   - Video Generation:
       - SANA-Video: sana_video.md
-      - SANA-V2V: sana_v2v.md
+      - SANA-Streaming: sana_streaming.md
       - Video Inference: sana_video_inference.md
       - LongSANA: longsana.md
       - SANA-WM: sana_wm.md

@@ -16,7 +16,6 @@
 
 import argparse
 import os
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -24,38 +23,38 @@ from typing import List, Optional, Tuple
 os.environ["DISABLE_XFORMERS"] = "1"
 os.environ.setdefault("USE_CHUNKWISE_GDN", "1")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-warnings.filterwarnings("ignore")
 
 import imageio
-import imageio.v3 as iio
-import numpy as np
 import pyrallis
 import torch
-import torch.nn.functional as F
+import imageio.v3 as iio
+import numpy as np
+import torchvision.transforms as T
+from accelerate import Accelerator
 
 import diffusion.model.nets  # noqa: F401 - register model/attention modules.
-from diffusion import FlowEuler
+from diffusion import DPMS
+from diffusion.data.transforms import ResizeCrop, ToTensorVideo
 from diffusion.model.builder import build_model, get_tokenizer_and_text_encoder, get_vae, vae_decode, vae_encode
 from diffusion.model.utils import get_weight_dtype
-from diffusion.scheduler.sana_v2v_streaming_sampler import SANAStreamingSampler
 from diffusion.utils.config import AEConfig, ModelConfig, SchedulerConfig, TextEncoderConfig
 from sana.tools import resolve_hf_path
 from tools.download import find_model
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-RELEASE_REPO_ID = "Yuyang-z/test-streaming"
+BIDIRECTIONAL_REPO_ID = "Efficient-Large-Model/SANA-Streaming_bidirectional"
+STREAMING_REPO_ID = "Efficient-Large-Model/SANA-Streaming"
 
 DEFAULTS = {
     "bidirectional_short": {
-        "config": "configs/sana_v2v/sana_v2v_bidirectional_2b_720p.yaml",
-        "model_path": f"hf://{RELEASE_REPO_ID}/dit/sana_bidirectional_short.pth",
+        "config": "configs/sana_streaming/sana_streaming_bidirectional_2b_720p.yaml",
+        "model_path": f"hf://{BIDIRECTIONAL_REPO_ID}/dit/sana_bidirectional_short.pth",
         "num_frames": 81,
         "step": 50,
         "cfg_scale": 6.0,
     },
     "long_streaming": {
-        "config": "configs/sana_v2v/sana_v2v_streaming_2b_720p.yaml",
-        "model_path": f"hf://{RELEASE_REPO_ID}/dit/sana_streaming_ar.pth",
+        "config": "configs/sana_streaming/sana_streaming_2b_720p.yaml",
+        "model_path": f"hf://{STREAMING_REPO_ID}/dit/sana_streaming_ar.pth",
         "num_frames": 969,
         "step": 4,
         "cfg_scale": 1.0,
@@ -142,9 +141,9 @@ def str2bool(value):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Sana V2V inference.")
+    parser = argparse.ArgumentParser(description="SANA-Streaming video-to-video inference.")
     parser.add_argument("--mode", choices=tuple(DEFAULTS), default="long_streaming")
-    parser.add_argument("--config", default=None, help="Slim V2V YAML config.")
+    parser.add_argument("--config", default=None, help="SANA-Streaming YAML config.")
     parser.add_argument("--model_path", default=None, help="DiT checkpoint, local path or hf:// URI.")
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--video_path", required=True, help="Source video path, local path or hf:// URI.")
@@ -157,10 +156,14 @@ def parse_args():
     parser.add_argument("--step", type=int, default=None)
     parser.add_argument("--cfg_scale", type=float, default=None)
     parser.add_argument("--flow_shift", type=float, default=None)
-    parser.add_argument("--seed", type=int, default=3407)
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--negative_prompt", default=None)
+    parser.add_argument("--motion_score", type=int, default=None)
     parser.add_argument("--num_cached_blocks", type=int, default=2)
     parser.add_argument("--sink_token", type=str2bool, default=True)
+    parser.add_argument("--save_latent", action="store_true", help="Save initial/source/generated latents for debugging.")
+    parser.add_argument("--input_latent_path", default=None, help="Debug path containing [noise, source, output] latents.")
+    parser.add_argument("--input_text_embed_path", default=None, help="Debug path containing prompt/negative text embeds.")
     args = parser.parse_args()
 
     mode_defaults = DEFAULTS[args.mode]
@@ -169,25 +172,21 @@ def parse_args():
     args.num_frames = args.num_frames or mode_defaults["num_frames"]
     args.step = args.step or mode_defaults["step"]
     args.cfg_scale = args.cfg_scale if args.cfg_scale is not None else mode_defaults["cfg_scale"]
+    if args.motion_score is None:
+        args.motion_score = 10 if args.mode == "bidirectional_short" else 0
     if args.negative_prompt is None:
         args.negative_prompt = DEFAULT_NEGATIVE_PROMPT if args.mode == "bidirectional_short" else ""
     return args
 
 
 def resolve_local_path(path, *, for_output=False):
-    p = Path(path)
-    if p.is_absolute() or str(path).startswith("hf://"):
-        return str(p) if not str(path).startswith("hf://") else str(path)
-
-    cwd_path = (Path.cwd() / p).resolve()
+    if str(path).startswith("hf://"):
+        return str(path)
+    p = Path(path).expanduser()
+    if p.is_absolute():
+        return str(p)
     if for_output:
-        return str(cwd_path)
-    if cwd_path.exists():
-        return str(cwd_path)
-
-    repo_path = (REPO_ROOT / p).resolve()
-    if repo_path.exists():
-        return str(repo_path)
+        return str((Path.cwd() / p).resolve())
     return str(p)
 
 
@@ -201,27 +200,25 @@ def resolve_input_video_path(video_path):
 
 
 def read_video(video_path, height, width, num_frames):
-    frames = []
     local_video_path = resolve_input_video_path(video_path)
+    frames = []
     for frame in iio.imiter(local_video_path, plugin="pyav"):
-        if frame.shape[-1] > 3:
-            frame = frame[..., :3]
         frames.append(frame)
         if len(frames) >= num_frames:
             break
-    if len(frames) < num_frames:
-        raise RuntimeError(f"{video_path} has {len(frames)} decoded frames, but {num_frames} are required.")
-
-    video = torch.from_numpy(np.stack(frames, axis=0)).permute(0, 3, 1, 2).float() / 255.0
-    src_h, src_w = video.shape[-2:]
-    scale = max(height / src_h, width / src_w)
-    resized_h = int(round(src_h * scale))
-    resized_w = int(round(src_w * scale))
-    video = F.interpolate(video, size=(resized_h, resized_w), mode="bilinear", align_corners=False)
-    top = max((resized_h - height) // 2, 0)
-    left = max((resized_w - width) // 2, 0)
-    video = video[..., top : top + height, left : left + width]
-    return video.mul_(2.0).sub_(1.0)
+    if len(frames) < num_frames and num_frames != 81:
+        raise RuntimeError(f"Short decode: {video_path} returned {len(frames)} frames, expected >= {num_frames}")
+    if not frames:
+        raise RuntimeError(f"Decode returned no frames for {video_path}")
+    transform = T.Compose(
+        [
+            ToTensorVideo(),
+            ResizeCrop((height, width)),
+            T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+        ]
+    )
+    video = torch.from_numpy(np.stack(frames, axis=0)).permute(0, 3, 1, 2)
+    return transform(video)
 
 
 def save_video(video, output_path, fps):
@@ -292,9 +289,10 @@ def main():
     torch.set_grad_enabled(False)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     config = pyrallis.parse(config_class=InferenceConfig, config_path=resolve_hf_path(args.config), args=[])
+    accelerator = Accelerator(mixed_precision=config.model.mixed_precision)
+    device = accelerator.device
     weight_dtype = get_weight_dtype(config.model.mixed_precision)
     vae_dtype = get_weight_dtype(config.vae.weight_dtype)
     vae_stride = config.vae.vae_stride
@@ -311,51 +309,77 @@ def main():
     )
 
     vae = get_vae(config.vae.vae_type, config.vae.vae_pretrained, device=device, dtype=vae_dtype, config=config.vae)
+    if config.vae.vae_type == "LTX2VAE_diffusers":
+        if hasattr(vae, "enable_tiling"):
+            vae.enable_tiling()
+        if hasattr(vae, "use_framewise_encoding"):
+            vae.use_framewise_encoding = True
+            vae.use_framewise_decoding = True
+            vae.tile_sample_stride_num_frames = getattr(config.vae, "tile_sample_stride_num_frames", 64)
+            vae.tile_sample_min_num_frames = getattr(config.vae, "tile_sample_min_num_frames", 96)
     tokenizer, text_encoder = get_tokenizer_and_text_encoder(config.text_encoder.text_encoder_name, device=device)
-    model = load_model(config, latent_size, device, weight_dtype, args.model_path)
-
-    prompt_embeds, prompt_mask = encode_prompt(
-        tokenizer, text_encoder, args.prompt, config, device, use_chi_prompt=True
-    )
     negative_embeds, negative_mask = encode_prompt(
         tokenizer, text_encoder, args.negative_prompt, config, device, use_chi_prompt=False
     )
+    model = load_model(config, latent_size, device, weight_dtype, args.model_path)
+    model, text_encoder = accelerator.prepare(model, text_encoder)
 
-    video = read_video(args.video_path, latent_h * vae_stride[1], latent_w * vae_stride[2], args.num_frames)
-    video = video.permute(1, 0, 2, 3).unsqueeze(0).to(device=device, dtype=vae_dtype)
-    image_vae_embeds = vae_encode(
-        config.vae.vae_type,
-        vae,
-        video,
-        sample_posterior=False,
-        device=device,
-    ).to(vae_dtype)
+    prompt = args.prompt.strip()
+    if args.motion_score > 0:
+        prompt = f"{prompt} motion score: {int(args.motion_score)}."
+    prompt_embeds, prompt_mask = encode_prompt(tokenizer, text_encoder, prompt, config, device, use_chi_prompt=True)
+    if args.input_text_embed_path:
+        debug_text = torch.load(args.input_text_embed_path, map_location="cpu")
+        prompt_embeds = debug_text["prompt_embeds"].to(device=device)
+        prompt_mask = debug_text["prompt_mask"].to(device=device)
+        negative_embeds = debug_text["negative_embeds"].to(device=device)
+        negative_mask = debug_text["negative_mask"].to(device=device)
 
-    generator = torch.Generator(device=device).manual_seed(args.seed)
-    noise = torch.randn(
-        1,
-        config.vae.vae_latent_dim,
-        latent_t,
-        latent_h,
-        latent_w,
-        device=device,
-        generator=generator,
-    )
+    debug_latents = torch.load(args.input_latent_path, map_location="cpu") if args.input_latent_path else None
+    if debug_latents is None:
+        video = read_video(args.video_path, latent_h * vae_stride[1], latent_w * vae_stride[2], args.num_frames)
+        video = video.permute(1, 0, 2, 3).unsqueeze(0).to(device=device, dtype=vae_dtype)
+        image_vae_embeds = vae_encode(
+            config.vae.vae_type,
+            vae,
+            video,
+            sample_posterior=False,
+            device=device,
+        ).to(vae_dtype)
+
+        generator = torch.Generator(device=device).manual_seed(args.seed)
+        noise = torch.randn(
+            1,
+            config.vae.vae_latent_dim,
+            latent_t,
+            latent_h,
+            latent_w,
+            device=device,
+            generator=generator,
+        )
+    else:
+        noise = debug_latents[0:1].to(device=device)
+        image_vae_embeds = debug_latents[1:2].to(device=device, dtype=vae_dtype)
+    initial_noise = noise.clone()
     if args.mode == "bidirectional_short":
         hw = torch.tensor([[args.height, args.width]], dtype=torch.float32, device=device)
         model_kwargs = {"data_info": {"img_hw": hw, "image_vae_embeds": image_vae_embeds}, "mask": prompt_mask}
         if args.cfg_scale > 1.0:
             model_kwargs["mask"] = torch.cat([negative_mask, prompt_mask], dim=0)
             model_kwargs["data_info"]["image_vae_embeds"] = torch.cat([image_vae_embeds, image_vae_embeds], dim=0)
-        sampler = FlowEuler(
+        sampler = DPMS(
             model,
             condition=prompt_embeds,
             uncondition=negative_embeds,
             cfg_scale=args.cfg_scale,
-            flow_shift=flow_shift,
+            model_type="flow",
+            guidance_type="classifier-free",
             model_kwargs=model_kwargs,
+            schedule="FLOW",
         )
     else:
+        from diffusion.scheduler.sana_streaming_sampler import SANAStreamingSampler
+
         base_chunk_frames = 24 // vae_stride[0]
         sampler = SANAStreamingSampler(
             model,
@@ -371,10 +395,25 @@ def main():
             sink_token=args.sink_token,
         )
 
-    latents = sampler.sample(noise, steps=args.step).to(vae_dtype)
+    if args.mode == "bidirectional_short":
+        latents = sampler.sample(
+            noise,
+            steps=args.step,
+            order=2,
+            skip_type="time_uniform_flow",
+            method="multistep",
+            flow_shift=flow_shift,
+        ).to(vae_dtype)
+    else:
+        latents = sampler.sample(noise, steps=args.step).to(vae_dtype)
 
     samples = vae_decode(config.vae.vae_type, vae, latents)
     output_path = Path(resolve_local_path(args.output_dir, for_output=True)) / args.output_name
+    if args.save_latent:
+        source_latents = image_vae_embeds[:1] if image_vae_embeds.shape[0] > 1 else image_vae_embeds
+        latent_path = output_path.with_name(f"{output_path.stem}_latent.pt")
+        latent_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(torch.stack([initial_noise, source_latents, latents], dim=1)[0].cpu(), latent_path)
     save_video(samples[0], output_path, args.fps)
     print(f"Saved video to {output_path}")
 
