@@ -15,7 +15,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-# This file is modified from https://github.com/PixArt-alpha/PixArt-sigma
 import os
 from typing import List, Optional
 
