@@ -115,6 +115,12 @@ The `_pose.npy` files already bake in these actions (and `demo_2`'s slower
 speed), so `--camera asset/sana_wm/demo_N_pose.npy` reproduces the same motion
 as the matching `--action` string.
 
+### 80-scene benchmark
+
+For the fixed 80-scene, 60s SANA-WM benchmark release and reproducible
+bidirectional inference/evaluation workflow, see
+[SANA-WM benchmark guide](sana-wm-bench.md).
+
 ### Lower memory
 
 For tight VRAM budgets, opt in to lazy-load + CPU offload:
@@ -177,6 +183,149 @@ Overrides for advanced use:
   `"1000,960,889,727,0"`), `--refiner_block_size` (3), `--refiner_kv_max_frames`
   (11) — change the canonical recipe at your own quality risk.
 
+### ⚡ Quantized inference (fp8 / fp4)
+
+Streaming supports **per-component** low-precision compute to cut peak VRAM, set
+independently for the stage-1 DiT and the LTX-2 refiner:
+
+```bash
+python inference_video_scripts/wm/inference_sana_wm_streaming.py \
+  --image       asset/sana_wm/demo_0.png \
+  --prompt      asset/sana_wm/demo_0.txt \
+  --action      "w-80,dw-40,w-80,aw-40" \
+  --num_frames  241 \
+  --stage1_precision  fp4 \
+  --refiner_precision fp4 \
+  --output_dir  results/sana_wm_streaming
+```
+
+`--stage1_precision` / `--refiner_precision` each take `bf16` (default, any GPU),
+`fp8` (FP8 W8A8, Hopper **and** Blackwell), or `fp4` (NVFP4 W4A4, **Blackwell
+only** — sm_100/sm_120). Quantization touches only the linear GEMMs (self-attn,
+cross-attn, FFN), scoped **per transformer block** so the camera/action
+conditioning math stays in native precision and action-following is preserved.
+
+**Requirements.** fp8/fp4 need [NVIDIA Transformer Engine](https://github.com/NVIDIA/TransformerEngine)
+≥ 2.0, which `environment_setup.sh` installs by default. If you skipped it
+(`SANA_SKIP_TE=1`) the script exits with an install hint; bf16 needs nothing
+extra. fp4 additionally requires a Blackwell GPU (GB200, B200, RTX 50-series).
+
+Quantization is primarily a **memory** optimization — the GEMMs are
+latency-bound at these chunk sizes, so bf16 is already near the compute roofline
+and lower precision mainly buys VRAM headroom (and a modest GB200 speedup).
+
+Steady-state throughput and peak VRAM, **SANA-WM stages only** (excludes the
+one-time Pi3X intrinsics estimate and first-chunk `torch.compile` warmup),
+default `--refiner_kv_max_frames 11`:
+
+| stage-1 / refiner | peak VRAM | H100 (×realtime) | GB200 (×realtime) |
+|---|---|---|---|
+| bf16 / bf16 | 47.3 GB | 1.09× | 1.27× |
+| fp8 / fp8 | 35.4 GB | ~1.00× *(est.)* | 1.16× |
+| fp4 / fp4 | 29.4 GB | — (Blackwell only) | 1.16× |
+
+> 🎯 **Runs on a 32 GB RTX 5090:** `--stage1_precision fp4 --refiner_precision fp4` fits in **29.4 GB** (the bf16 default needs 47 GB). fp4 requires Blackwell,
+> which the 5090 is; the ×realtime figures above are measured on GB200/B200.
+
+A tighter KV window (`--refiner_kv_max_frames 2`) drops VRAM further and is
+faster, at a **quality cost** (more temporal flicker / drift — not recommended
+for final renders):
+
+| stage-1 / refiner | peak VRAM | H100 (×realtime) | GB200 (×realtime) |
+|---|---|---|---|
+| bf16 / bf16 | 37.4 GB | 1.26× | 1.57× |
+| fp8 / fp8 | 25.4 GB | — | 1.32× |
+| fp4 / fp4 | 25.0 GB | — | 1.25× |
+
+**Picking a precision:** bf16 for best quality on any GPU; **fp8** for Hopper
+(H100) users who want lower VRAM with no Blackwell requirement; **fp4** for
+Blackwell, the only setting that fits the 47 GB bf16 model onto a 32 GB card. You
+can mix (e.g. `--stage1_precision bf16 --refiner_precision fp8`).
+
+> **Note:** quantization does not change the intrinsic long-rollout drift of the
+> AR stage-1 backbone — very long clips slowly lose scene consistency regardless
+> of precision. This is a property of the autoregressive teacher, not the quant.
+
+## Chunk-Causal Stage-1 Teacher
+
+The chunk-causal Stage-1 teacher is an intermediate research checkpoint: only
+the Stage-1 Sana DiT is chunk-causal, while inference keeps the bidirectional
+LTX-2 VAE and refiner path enabled by default. It is released mainly so users
+can reproduce the CP/FSDP2 Stage-1 training path and experiment with future
+chunk-causal models. It may show severe artifacts, temporal flicker, or weaker
+camera adherence than the full bidirectional / streaming releases; keep the
+default refiner on for qualitative samples and use `--no_refiner` only for fast
+Stage-1 debugging.
+
+The public config sets `scheduler.vis_sampler: chunk_flow_euler`, so the CLI's
+default `--sampling_algo auto` selects the correct sampler:
+
+```bash
+python inference_video_scripts/wm/inference_sana_wm.py \
+  --config     hf://Efficient-Large-Model/SANA-WM_chunk_causal/config.yaml \
+  --model_path hf://Efficient-Large-Model/SANA-WM_chunk_causal/dit/sana_wm_chunk_causal_1600m_720p.safetensors \
+  --image      asset/sana_wm/demo_0.png \
+  --prompt     asset/sana_wm/demo_0.txt \
+  --action     "w-240,dw-120,w-120,aw-180,w-300" \
+  --num_frames 961 \
+  --offload_refiner \
+  --output_dir results/sana_wm_chunk_causal
+```
+
+`--offload_refiner` only changes model residency; the bidirectional refiner still
+runs unless `--no_refiner` is passed.
+
+`chunk_flow_euler` uses `interval_k = 1 / num_chunks` by default. Override it
+with `--chunk_interval_k` only for ablations.
+
+## Chunk-Causal Stage-1 Training on Sekai-Game
+
+This repo includes the minimal chunk-causal Stage-1 training path:
+
+- training script: `train_video_scripts/train_sana_wm_stage1.py`
+- training config: `configs/sana_wm/stage1/sana_wm_stage1_sekai_chunk_causal_cp2_fsdp2.yaml`
+- latent dataset loader: `diffusion/data/datasets/video/sana_wm_zip_latent_data.py`
+- CP/FSDP2 tests: `tests/test_context_parallel*.py`
+
+The example can run directly from the public HF dataset
+[`Efficient-Large-Model/SANA-WM-example-training-dataset`](https://huggingface.co/datasets/Efficient-Large-Model/SANA-WM-example-training-dataset).
+The config downloads the dataset on the main rank, waits for all ranks, and
+trains from the chunk-causal Stage-1 teacher checkpoint with FSDP2 and CP2:
+
+```bash
+torchrun --nproc_per_node=8 --master_port=29500 \
+  train_video_scripts/train_sana_wm_stage1.py \
+  --config_path configs/sana_wm/stage1/sana_wm_stage1_sekai_chunk_causal_cp2_fsdp2.yaml
+```
+
+The dataset repo is about 235 GB and is laid out so the config paths resolve to:
+
+```yaml
+data:
+  hf_dataset_repo: Efficient-Large-Model/SANA-WM-example-training-dataset
+  hf_dataset_revision: 4d965e94b9ea11b9c5ba085251ffa7a0345e006f
+  hf_dataset_local_dir: .
+  data_dir:
+    sekai_game: data/sekai_game_train_961frames_16fps_ovl640
+  vae_cache_dir: data/vae_cache/LTX2VAE_diffusers_704x1280/sekai_game_train_961frames_16fps_ovl640
+model:
+  load_from: hf://Efficient-Large-Model/SANA-WM_chunk_causal/dit/sana_wm_chunk_causal_1600m_720p.safetensors
+  attn_type: ChunkCausalGDNTriton
+  camctrl_type: ChunkCausalGDNUCPESinglePathLiteLABothTriton
+train:
+  use_fsdp: true
+  fsdp_version: 2
+  cp_size: 2
+```
+
+Set `data.hf_dataset_local_dir` to a shared filesystem path if you do not want
+the dataset under the repo checkout. Relative `data_dir` and `vae_cache_dir`
+entries are resolved under that directory after download.
+
+The Sekai-derived dataset is redistributed for non-commercial research use
+only. See the dataset card, `LICENSE`, and `NOTICE.md` in the HF dataset repo
+before training or redistributing derivatives.
+
 ## 🎛️ Argument Reference
 
 | Argument | Format / Default |
@@ -188,17 +337,20 @@ Overrides for advanced use:
 | `--translation_speed` | Per-frame translation magnitude (default `0.025`). |
 | `--rotation_speed_deg` | Per-frame rotation magnitude in degrees (default `0.6`). |
 | `--intrinsics` | Optional `.npy` of shape `(3, 3)`, `(F, 3, 3)`, or `(4,)`. Pi3X-estimated if omitted. |
-| `--num_frames` | Total frames to generate (default `161`; the demos above use `321`). |
+| `--num_frames` | Total frames to generate (default `161`; the streaming demo uses `241`; the chunk-causal Stage-1 teacher example uses `961`). |
 | `--fps` | Output mp4 frame rate (default `16`). |
 | `--step` | Stage-1 DiT sampling steps (default `60`). |
 | `--cfg_scale` | Classifier-free-guidance scale (default `5.0`). |
 | `--flow_shift` | Override the scheduler's `inference_flow_shift`. |
-| `--no_refiner` | Skip the LTX-2 refiner and decode Stage-1 latents with the Sana VAE (faster, lower quality). |
+| `--no_refiner` | The LTX-2 refiner is enabled by default. This flag skips it and decodes Stage-1 latents with the Sana VAE for fast, lower-quality debugging. |
 | `--refiner_root` | LTX-2 refiner root containing `transformer/` and `connectors/`. |
 | `--no_action_overlay` | Skip the WASD + joystick overlay on the output video. |
 | `--offload_vae` | Move the VAE to CPU between encode / decode steps. |
 | `--offload_refiner` | Lazy-load the LTX-2 refiner only when needed; release afterwards. |
-| `--sampling_algo` | `flow_euler_ltx` (default, bidirectional). For streaming use the dedicated `wm/inference_sana_wm_streaming.py`. |
+| `--stage1_precision` | Streaming only. Stage-1 DiT compute precision: `bf16` (default), `fp8` (Hopper+/Blackwell), `fp4` (Blackwell only). fp8/fp4 need Transformer Engine. |
+| `--refiner_precision` | Streaming only. LTX-2 refiner compute precision: `bf16` (default), `fp8`, `fp4`. See [Quantized inference](#-quantized-inference-fp8--fp4). |
+| `--sampling_algo` | `auto` (default). Uses `chunk_flow_euler` for chunk-causal teacher configs and `flow_euler_ltx` otherwise. For streaming use the dedicated `wm/inference_sana_wm_streaming.py`. |
+| `--chunk_interval_k` | Optional `chunk_flow_euler` interval override. Defaults to `1 / num_chunks`. |
 
 ## 📁 HF Repository Layout
 
@@ -221,8 +373,17 @@ Overrides for advanced use:
 | Chunk-causal LTX-2 refiner | `refiner_diffusers/{transformer,connectors}/` |
 | Gemma-3-12B text encoder (refiner) | `gemma3_12b/` |
 
-The inference config ships in-repo at
-`configs/sana_wm/sana_wm_streaming_1600m_720p.yaml` (not in the weights repo).
+`Efficient-Large-Model/SANA-WM_chunk_causal` (Stage-1 teacher):
+
+| Component | Path |
+|------------------------------------|------------------------------------------------------------|
+| Chunk-causal Sana DiT (Stage 1) | `dit/sana_wm_chunk_causal_1600m_720p.safetensors` |
+| Inference config | `config.yaml` |
+
+The chunk-causal teacher repo intentionally contains only the Stage-1 config and
+DiT weights. The CLI resolves the bidirectional VAE, LTX-2 refiner, and refiner
+text encoder from `Efficient-Large-Model/SANA-WM_bidirectional` by default to
+avoid duplicating large immutable artifacts.
 
 The Sana text encoder (`gemma-2-2b-it`) is fetched separately from
 `Efficient-Large-Model/gemma-2-2b-it`.
