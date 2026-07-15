@@ -15,6 +15,7 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import StateDictType
 from torchvision.io import write_video
 
+from diffusion.data.transforms import read_video_from_path
 from diffusion.longsana.model import StreamingSANATrainingModel
 from diffusion.longsana.utils.debug_option import DEBUG, DEBUG_GRADIENT, LOG_GPU_MEMORY
 from diffusion.longsana.utils.distributed import EMA_FSDP, fsdp_state_dict, fsdp_wrap, launch_distributed_job
@@ -24,6 +25,8 @@ from .self_forcing_trainer import Trainer as SelfForcingScoreDistillationTrainer
 
 
 class LongSANATrainer(SelfForcingScoreDistillationTrainer):
+    _MAX_SKIPPED_V2V_BATCHES = 10
+
     def __init__(self, config):
         super().__init__(config)
         # streaming training configuration
@@ -46,17 +49,95 @@ class LongSANATrainer(SelfForcingScoreDistillationTrainer):
         self.gradient_accumulation_steps = getattr(config, "gradient_accumulation_steps", 1)
         self.is_lora_enabled = getattr(config, "is_lora_enabled", False)
 
+    def _encode_v2v_source_batch(self, batch, latent_frames=None, return_source_videos=False):
+        source_video_paths = batch.get("source_video_paths")
+        if source_video_paths is None:
+            raise ValueError("V2V long training requires source_video_paths in each batch")
+
+        configured_frames, latent_channels, latent_height, latent_width = self.config.image_or_video_shape[1:]
+        latent_frames = configured_frames if latent_frames is None else int(latent_frames)
+        if latent_frames <= 0:
+            raise ValueError("latent_frames must be positive")
+        vae_stride = self.config.get("vae_downsample_rate", [8, 32, 32])
+        pixel_frames = (latent_frames - 1) * vae_stride[0] + 1
+        pixel_size = (latent_height * vae_stride[1], latent_width * vae_stride[2])
+        skip_batch = torch.zeros(1, device=self.device)
+        source_videos = []
+        try:
+            source_videos = [
+                read_video_from_path(path, pixel_size, pixel_frames).permute(1, 0, 2, 3) for path in source_video_paths
+            ]
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            rank = dist.get_rank() if dist.is_initialized() else 0
+            print(colored(f"[LongSANATrainer][rank {rank}] skipping source video: {error}", "red"))
+            skip_batch.fill_(1)
+
+        if dist.is_initialized():
+            dist.all_reduce(skip_batch, op=dist.ReduceOp.MAX)
+
+        if skip_batch.item():
+            del source_videos
+            return None
+
+        source_video_batch = None
+        encode_failed = torch.zeros(1, device=self.device)
+        try:
+            source_video_batch = torch.stack(source_videos)
+            with torch.no_grad():
+                image_vae_embeds = self.model.vae.encode_to_latent(source_video_batch).to(
+                    device=self.device, dtype=self.dtype
+                )
+            expected_shape = (
+                len(source_video_paths),
+                latent_channels,
+                latent_frames,
+                latent_height,
+                latent_width,
+            )
+            if image_vae_embeds.shape != expected_shape:
+                raise ValueError(
+                    f"Source VAE produced shape {tuple(image_vae_embeds.shape)}, expected {expected_shape}"
+                )
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            rank = dist.get_rank() if dist.is_initialized() else 0
+            print(colored(f"[LongSANATrainer][rank {rank}] source VAE encoding failed: {error}", "red"))
+            image_vae_embeds = None
+            encode_failed.fill_(1)
+
+        if dist.is_initialized():
+            dist.all_reduce(encode_failed, op=dist.ReduceOp.MAX)
+
+        if encode_failed.item():
+            del source_videos, source_video_batch
+            return None
+        del source_videos
+        if return_source_videos:
+            return image_vae_embeds, source_video_batch
+        del source_video_batch
+        return image_vae_embeds
+
+    def _next_batch_with_v2v_conditioning(self):
+        if not getattr(self, "v2v", False):
+            return next(self.dataloader), None
+
+        for skipped_batches in range(self._MAX_SKIPPED_V2V_BATCHES + 1):
+            batch = next(self.dataloader)
+            image_vae_embeds = self._encode_v2v_source_batch(batch)
+            if image_vae_embeds is not None:
+                return batch, image_vae_embeds
+            if skipped_batches == self._MAX_SKIPPED_V2V_BATCHES:
+                raise RuntimeError("Too many consecutive V2V batches skipped")
+
     def start_new_sequence(self):
         if DEBUG and (not dist.is_initialized() or dist.get_rank() == 0):
             print(f"[SeqTrain-Trainer] start_new_sequence called")
-
-        # Fetch a new batch
-        if DEBUG and (not dist.is_initialized() or dist.get_rank() == 0):
             print(f"[SeqTrain-Trainer] start_new_sequence: fetch new batch")
-        batch = next(self.dataloader)
+
+        batch, image_vae_embeds = self._next_batch_with_v2v_conditioning()
 
         # Prepare conditional information
         text_prompts = batch["prompts"]
+        reverse_text_prompts = batch.get("reverse_prompts")
         print(f"[SeqTrain-Trainer] text_prompts={text_prompts}")
         if self.config.i2v:
             image_latent = batch["ode_latent"][:, -1][
@@ -102,6 +183,14 @@ class LongSANATrainer(SelfForcingScoreDistillationTrainer):
                 else:
                     primary_unconditional_dict_real = None
 
+            reverse_conditional_dict = None
+            if reverse_text_prompts is not None:
+                reverse_conditional_dict = self.get_text_embeddings(
+                    text_prompts=reverse_text_prompts, use_chi_prompt=True
+                )
+            elif getattr(self.config, "reverse_reg_weight", 0.0) > 0:
+                raise ValueError("reverse_reg_weight > 0 requires reverse_prompt in the long-video manifest")
+
         temp_max_length = self.streaming_model.max_length
 
         if DEBUG and (not dist.is_initialized() or dist.get_rank() == 0):
@@ -137,10 +226,12 @@ class LongSANATrainer(SelfForcingScoreDistillationTrainer):
             unconditional_dict=primary_unconditional_dict,
             conditional_dict_real=primary_conditional_dict_real,
             unconditional_dict_real=primary_unconditional_dict_real,
+            reverse_conditional_dict=reverse_conditional_dict,
             initial_latent=image_latent,
             switch_conditional_dict=switch_conditional_dict,
             switch_frame_index=switch_frame_index,
             temp_max_length=temp_max_length,
+            image_vae_embeds=image_vae_embeds,
         )
 
         self.streaming_active = True
@@ -187,7 +278,11 @@ class LongSANATrainer(SelfForcingScoreDistillationTrainer):
             else:
                 current_seq_length = self.streaming_model.state.get("current_length")
                 if current_seq_length == 0:
-                    generated_chunk, chunk_info = self.streaming_model.generate_next_chunk(requires_grad=False)
+                    with torch.no_grad():
+                        warmup_chunk, warmup_chunk_info = self.streaming_model.generate_next_chunk(requires_grad=False)
+                        self.streaming_model.run_reverse_denoise(
+                            chunk=warmup_chunk, chunk_info=warmup_chunk_info, requires_grad=False
+                        )
 
                 generated_chunk, chunk_info = self.streaming_model.generate_next_chunk(requires_grad=True)
 
@@ -200,9 +295,16 @@ class LongSANATrainer(SelfForcingScoreDistillationTrainer):
                 )
 
             # Compute generator loss
-            generator_loss, generator_log_dict = self.streaming_model.compute_generator_loss(
+            dmd_loss, generator_log_dict = self.streaming_model.compute_generator_loss(
                 chunk=generated_chunk, chunk_info=chunk_info
             )
+            reverse_result = self.streaming_model.run_reverse_denoise(
+                chunk=generated_chunk, chunk_info=chunk_info, requires_grad=True
+            )
+            reverse_loss, reverse_log_dict = self.streaming_model.compute_reverse_reg_loss(reverse_result)
+            generator_loss = dmd_loss + reverse_loss
+            generator_log_dict.update(reverse_log_dict)
+            generator_log_dict["generator_dmd_loss"] = dmd_loss.detach()
 
             # Scale loss for gradient accumulation and backward
             scaled_generator_loss = generator_loss / self.gradient_accumulation_steps
@@ -235,7 +337,10 @@ class LongSANATrainer(SelfForcingScoreDistillationTrainer):
                 else:
                     current_seq_length = self.streaming_model.state.get("current_length")
                     if current_seq_length == 0:
-                        generated_chunk, chunk_info = self.streaming_model.generate_next_chunk(requires_grad=False)
+                        warmup_chunk, warmup_chunk_info = self.streaming_model.generate_next_chunk(requires_grad=False)
+                        self.streaming_model.run_reverse_denoise(
+                            chunk=warmup_chunk, chunk_info=warmup_chunk_info, requires_grad=False
+                        )
 
                     generated_chunk, chunk_info = self.streaming_model.generate_next_chunk(requires_grad=False)
 
@@ -253,6 +358,9 @@ class LongSANATrainer(SelfForcingScoreDistillationTrainer):
 
             if generated_chunk.requires_grad:
                 generated_chunk = generated_chunk.detach()
+
+            # Keep the independent reverse cache aligned with the forward stream.
+            self.streaming_model.run_reverse_denoise(chunk=generated_chunk, chunk_info=chunk_info, requires_grad=False)
 
             # Compute critic loss
             critic_loss, critic_log_dict = self.streaming_model.compute_critic_loss(
@@ -429,6 +537,9 @@ class LongSANATrainer(SelfForcingScoreDistillationTrainer):
                                 "dmdtrain_gradient_norm": f"{generator_log_dict['dmdtrain_gradient_norm'].mean().item():.4f}",
                             }
                         )
+                        for key in ("generator_dmd_loss", "reverse_reg_loss", "reverse_reg_weighted_loss"):
+                            if key in generator_log_dict:
+                                wandb_loss_dict[key] = f"{generator_log_dict[key].mean().item():.4f}"
 
                     wandb_loss_dict.update(
                         {

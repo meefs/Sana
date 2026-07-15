@@ -15,7 +15,13 @@ from torchvision.io import write_video
 
 from diffusion.longsana.model import DMDSana
 from diffusion.longsana.pipeline import SanaInferencePipeline
-from diffusion.longsana.utils.dataset import ShardingLMDBDataset, TextDataset, TwoTextDataset, cycle
+from diffusion.longsana.utils.dataset import (
+    LongV2VManifestDataset,
+    ShardingLMDBDataset,
+    TextDataset,
+    TwoTextDataset,
+    cycle,
+)
 from diffusion.longsana.utils.debug_option import DEBUG
 from diffusion.longsana.utils.distributed import EMA_FSDP, fsdp_state_dict, fsdp_wrap, launch_distributed_job
 from diffusion.longsana.utils.misc import merge_dict_list, set_seed
@@ -26,6 +32,8 @@ class Trainer:
     def __init__(self, config):
         self.config = config
         self.step = 0
+        self.v2v = bool(getattr(config, "v2v", False))
+        self.long_v2v = self.v2v and getattr(config, "trainer", None) == "longsana"
 
         # Step 1: Initialize the distributed training environment (rank, seed, dtype, logging etc.)
         torch.backends.cuda.matmul.allow_tf32 = True
@@ -103,7 +111,7 @@ class Trainer:
             cpu_offload=getattr(config, "text_encoder_cpu_offload", False),
         )
 
-        if not config.no_visualize or config.load_raw_video:
+        if not config.no_visualize or config.load_raw_video or self.long_v2v:
             self.model.vae = self.model.vae.to(
                 device=self.device, dtype=torch.bfloat16 if config.mixed_precision else torch.float32
             )
@@ -131,7 +139,7 @@ class Trainer:
 
         ##############################################################################################################
         # (If resuming) Load the model and optimizer, lr_scheduler, ema's statedicts
-        if getattr(config, "generator_ckpt", False):
+        if getattr(config, "generator_ckpt", False) and not self.long_v2v:
             print(f"Loading pretrained generator from {config.generator_ckpt}")
             state_dict = find_model(config.generator_ckpt)
             if "generator" in state_dict:
@@ -155,14 +163,19 @@ class Trainer:
             weight_decay=config.weight_decay,
         )
         # Step 5: Initialize the dataloader
-        if self.config.i2v:
+        if self.long_v2v:
+            dataset = LongV2VManifestDataset(
+                config.data_path,
+                data_root=getattr(config, "data_root", None),
+            )
+        elif self.config.i2v:
             dataset = ShardingLMDBDataset(config.data_path, max_pair=int(1e8))
         elif getattr(self.config, "switch_prompt_path", None) is not None:
             dataset = TwoTextDataset(config.data_path, config.switch_prompt_path)
         else:
             dataset = TextDataset(config.data_path)
 
-        sampler = torch.utils.data.distributed.DistributedSampler(dataset, shuffle=True, drop_last=True)
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset, shuffle=True, drop_last=not self.long_v2v)
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, sampler=sampler, num_workers=8)
 
         if dist.get_rank() == 0:
@@ -174,16 +187,23 @@ class Trainer:
         self.vis_interval = getattr(config, "vis_interval", -1)
         if self.vis_interval > 0 and len(getattr(config, "vis_video_lengths", [])) > 0:
             val_data_path = getattr(config, "val_data_path", None) or config.data_path
-            val_dataset = TextDataset(val_data_path)
+            if self.long_v2v:
+                val_data_root = getattr(config, "val_data_root", None) or getattr(config, "data_root", None)
+                val_dataset = LongV2VManifestDataset(val_data_path, data_root=val_data_root)
+            else:
+                val_dataset = TextDataset(val_data_path)
 
             if dist.get_rank() == 0:
                 print("VAL DATASET SIZE %d" % len(val_dataset))
 
             sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, drop_last=False)
             # Sequential sampling to keep prompts fixed
+            val_batch_size = getattr(config, "val_batch_size", 1)
+            if self.long_v2v and val_batch_size != 1:
+                raise ValueError("Long V2V online validation currently requires val_batch_size=1")
             val_dataloader = torch.utils.data.DataLoader(
                 val_dataset,
-                batch_size=getattr(config, "val_batch_size", 1),
+                batch_size=val_batch_size,
                 sampler=sampler,
                 num_workers=8,
             )
@@ -222,7 +242,7 @@ class Trainer:
                 print("Auto resume disabled, starting from scratch")
 
         if checkpoint_path is None:
-            if getattr(config, "generator_ckpt", False):
+            if getattr(config, "generator_ckpt", False) and not self.long_v2v:
                 checkpoint_path = config.generator_ckpt
                 if self.is_main_process:
                     print(f"Using explicit checkpoint: {checkpoint_path}")
@@ -615,7 +635,7 @@ class Trainer:
                 print(f"Reached max iterations: {self.step} > {self.config.max_iters}, stopping training")
                 break
 
-    def generate_video(self, pipeline, num_frames, prompts, image=None):
+    def generate_video(self, pipeline, num_frames, prompts, image=None, data_info=None, source_videos=None):
         batch_size = len(prompts)
         channel, h, w = self.config.image_or_video_shape[-3:]
         generator = torch.Generator(device=self.device).manual_seed(self.config.seed)
@@ -634,11 +654,15 @@ class Trainer:
                 [batch_size, channel, num_frames, h, w], device=self.device, dtype=self.dtype, generator=generator
             )
         with torch.no_grad():
+            inference_kwargs = {"data_info": data_info} if data_info is not None else {}
+            if self.long_v2v:
+                inference_kwargs["generator"] = generator
             video_latent_btchw, _ = pipeline.inference(
                 noise=sampled_noise,
                 text_prompts=prompts,
                 return_latents=True,
                 initial_latent=initial_latent,
+                **inference_kwargs,
             )
             # B,T,C,H,W
             video_latent_bcthw = video_latent_btchw.permute(0, 2, 1, 3, 4)
@@ -648,6 +672,30 @@ class Trainer:
             pixel_btchw = (
                 torch.clamp(127.5 * pixel_bcthw + 127.5, 0, 255).permute(0, 2, 3, 4, 1).to(torch.uint8).cpu().numpy()
             )
+            if source_videos is not None:
+                if source_videos.dim() != 5:
+                    raise ValueError("source_videos must be [B, C, T, H, W]")
+                if source_videos.shape[0] != pixel_btchw.shape[0]:
+                    raise ValueError(
+                        f"Source/generated batch mismatch: {source_videos.shape[0]} and {pixel_btchw.shape[0]}"
+                    )
+                generated_frames, generated_height, generated_width = pixel_btchw.shape[1:4]
+                if source_videos.shape[2] < generated_frames:
+                    raise ValueError(
+                        f"Source video has {source_videos.shape[2]} frames, generated video has {generated_frames}"
+                    )
+                if source_videos.shape[-2:] != (generated_height, generated_width):
+                    raise ValueError(
+                        "Source/generated spatial mismatch: "
+                        f"{tuple(source_videos.shape[-2:])} and {(generated_height, generated_width)}"
+                    )
+                source_btchw = (
+                    torch.clamp(127.5 * source_videos[:, :, :generated_frames] + 127.5, 0, 255)
+                    .permute(0, 2, 3, 4, 1)
+                    .to(torch.uint8)
+                    .cpu()
+                )
+                pixel_btchw = torch.cat([source_btchw, torch.from_numpy(pixel_btchw)], dim=3).numpy()
         current_video = pixel_btchw
         # clear VAE cache
         try:
@@ -696,9 +744,32 @@ class Trainer:
         prompts = batch["prompts"]
         mode_info = ""
 
+        image_vae_embeds = None
+        source_videos = None
+        if self.long_v2v:
+            vis_video_lengths = [int(length) for length in self.vis_video_lengths]
+            if any(length <= 0 for length in vis_video_lengths):
+                raise ValueError("vis_video_lengths must contain positive frame counts")
+            encoded_source = self._encode_v2v_source_batch(
+                batch,
+                latent_frames=max(vis_video_lengths),
+                return_source_videos=True,
+            )
+            if encoded_source is None:
+                raise RuntimeError("Long V2V online validation could not decode or encode its source video")
+            image_vae_embeds, source_videos = encoded_source
+
         for vid_len in self.vis_video_lengths:
+            vid_len = int(vid_len)
             print(f"Generating video of length {vid_len}")
-            videos = self.generate_video(self.vis_pipeline, vid_len, prompts)
+            data_info = {"image_vae_embeds": image_vae_embeds[:, :, :vid_len]} if image_vae_embeds is not None else None
+            videos = self.generate_video(
+                self.vis_pipeline,
+                vid_len,
+                prompts,
+                data_info=data_info,
+                source_videos=source_videos,
+            )
 
             # Save each sample
             for idx, video_np in enumerate(videos):
